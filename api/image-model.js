@@ -29,6 +29,12 @@ export default async function handler(req, res) {
   }
 
   const references = Array.isArray(referenceImages) ? referenceImages.filter(Boolean) : [];
+  const bodySize = Buffer.byteLength(JSON.stringify(req.body || {}), "utf8");
+  if (bodySize > 4 * 1024 * 1024) {
+    return res.status(413).json({
+      message: "请求体过大：请使用压缩后的参考图，或减少本次传入的参考图数量。"
+    });
+  }
   let endpoint = url;
   let payload;
 
