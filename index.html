@@ -1,0 +1,2254 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 漫画 / 角色生图工作台</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1120px;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      color: #172033;
+      background: #eef2f7;
+    }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    .topbar {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: #fff;
+      border-bottom: 1px solid #d9dee8;
+    }
+    .topbar h1 { margin: 0; font-size: 18px; }
+    .topbar p { margin: 4px 0 0; color: #64748b; font-size: 12px; }
+    .shell {
+      height: calc(100vh - 64px);
+      display: grid;
+      grid-template-columns: 240px minmax(720px, 1fr);
+      overflow: hidden;
+    }
+    .sidebar {
+      padding: 18px 14px;
+      background: #172033;
+      color: #fff;
+      overflow-y: auto;
+    }
+    .main {
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .step-btn {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      text-align: left;
+      color: #dbe4f0;
+      background: transparent;
+    }
+    .step-btn.active { background: #fff; color: #172033; }
+    .step-btn small { display: block; margin-top: 6px; opacity: .72; }
+    .card {
+      margin-bottom: 16px;
+      padding: 18px;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgba(23, 32, 51, .08);
+    }
+    .card h2, .card h3 { margin: 0; }
+    .muted { color: #64748b; font-size: 14px; line-height: 1.7; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    label span {
+      display: block;
+      margin: 0 0 6px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      padding: 9px 10px;
+      outline: none;
+      background: #fff;
+    }
+    textarea { min-height: 116px; resize: vertical; line-height: 1.6; }
+    input:focus, textarea:focus, select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px #dbeafe;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      background: #fff;
+      color: #334155;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .btn.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+    .btn.danger { border-color: #fecaca; color: #dc2626; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: #f1f5f9;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.wait { background: #fff7ed; color: #c2410c; }
+    .badge.run { background: #eff6ff; color: #2563eb; }
+    .status-line {
+      margin-top: 10px;
+      border-radius: 6px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .thumbs, .result-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .thumb {
+      position: relative;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+    }
+    .thumb h4 {
+      margin: 7px 24px 5px 0;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .thumb img {
+      display: block;
+      width: 100%;
+      height: 86px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: #f1f5f9;
+      cursor: zoom-in;
+    }
+    .thumb label {
+      display: block;
+      margin-top: 8px;
+    }
+    .thumb input, .thumb textarea {
+      padding: 6px 7px;
+      font-size: 12px;
+    }
+    .thumb textarea {
+      min-height: 46px;
+    }
+    .icon-delete {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 26px;
+      height: 26px;
+      border: 1px solid #fecaca;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,.94);
+      color: #dc2626;
+      padding: 0;
+    }
+    .icon-delete svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+    }
+    .reference-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+    .reference-section {
+      min-width: 0;
+      margin-top: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 12px;
+    }
+    .reference-section h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .reference-section .toolbar {
+      margin-bottom: 10px;
+    }
+    .reference-section .thumbs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .reference-section .lock-block {
+      max-height: 70px;
+      overflow: auto;
+      padding: 7px 8px;
+      font-size: 11px;
+    }
+    .result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .result-card img {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #f1f5f9;
+      cursor: zoom-in;
+    }
+    .image-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      overflow: auto;
+      background: rgba(15, 23, 42, .88);
+    }
+    .image-toolbar {
+      position: fixed;
+      top: 16px;
+      right: 18px;
+      z-index: 41;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .image-meta {
+      position: fixed;
+      left: 18px;
+      top: 16px;
+      z-index: 41;
+      max-width: min(620px, calc(100vw - 180px));
+      color: #fff;
+      text-shadow: 0 2px 10px rgba(0,0,0,.55);
+    }
+    .image-meta h3 { margin: 0; font-size: 16px; }
+    .image-meta p { margin: 4px 0 0; color: #cbd5e1; font-size: 12px; }
+    .image-stage {
+      min-width: 100%;
+      min-height: 100%;
+      padding: 64px 24px 28px;
+      display: inline-flex;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .preview-image {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: none;
+      max-height: none;
+      object-fit: initial;
+      background: transparent;
+      box-shadow: 0 24px 80px rgba(0,0,0,.38);
+    }
+    .lock-block {
+      margin: 10px 0;
+      border-left: 3px solid #2563eb;
+      background: #f8fafc;
+      padding: 10px 12px;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    pre {
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      border-radius: 6px;
+      background: #f8fafc;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .record-list {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .record-item {
+      flex: 0 0 280px;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      padding: 10px;
+      background: #f8fafc;
+    }
+    .record-item img {
+      width: 58px;
+      height: 74px;
+      border-radius: 6px;
+      object-fit: cover;
+      float: left;
+      margin-right: 10px;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, .48);
+      padding: 30px;
+    }
+    .modal-panel {
+      width: min(1060px, 100%);
+      max-height: 82vh;
+      overflow: auto;
+      border-radius: 10px;
+      background: #fff;
+      padding: 18px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .25);
+    }
+
+    /* visual refresh */
+    body {
+      font-family: "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      font-weight: 300;
+      color: #182033;
+      background:
+        linear-gradient(135deg, rgba(124, 58, 237, .09), transparent 28%),
+        linear-gradient(225deg, rgba(6, 182, 212, .08), transparent 32%),
+        repeating-linear-gradient(90deg, rgba(148, 163, 184, .08) 0 1px, transparent 1px 44px),
+        #f5f7fc;
+    }
+    .topbar {
+      height: 58px;
+      background: rgba(255,255,255,.76);
+      border-bottom: 1px solid rgba(148, 163, 184, .28);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 14px 40px rgba(71, 85, 105, .08);
+    }
+    .topbar h1 {
+      font-size: 19px;
+      font-weight: 500;
+      letter-spacing: 0;
+      color: #111827;
+    }
+    .topbar p {
+      color: #64748b;
+      font-weight: 300;
+    }
+    .shell {
+      height: calc(100vh - 58px);
+      grid-template-columns: 236px minmax(780px, 1fr);
+    }
+    .sidebar {
+      background:
+        linear-gradient(180deg, rgba(20, 24, 43, .98), rgba(28, 30, 58, .98)),
+        linear-gradient(135deg, rgba(129, 140, 248, .18), transparent);
+      border-right: 1px solid rgba(255,255,255,.08);
+      box-shadow: inset -1px 0 0 rgba(255,255,255,.06);
+    }
+    .main {
+      padding: 22px 24px 34px;
+    }
+    .step-btn {
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 13px 12px;
+      color: rgba(226, 232, 240, .86);
+      font-weight: 300;
+      transition: background .18s ease, border-color .18s ease, transform .18s ease;
+    }
+    .step-btn:hover {
+      background: rgba(255,255,255,.07);
+      border-color: rgba(255,255,255,.08);
+      transform: translateX(2px);
+    }
+    .step-btn.active {
+      background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,243,255,.92));
+      color: #312e81;
+      border-color: rgba(196, 181, 253, .55);
+      box-shadow: 0 14px 34px rgba(17, 24, 39, .22);
+    }
+    .card {
+      border: 1px solid rgba(203, 213, 225, .72);
+      border-radius: 14px;
+      background: rgba(255,255,255,.82);
+      box-shadow: 0 20px 60px rgba(71, 85, 105, .11);
+      backdrop-filter: blur(14px);
+    }
+    .card h2 {
+      font-size: 22px;
+      font-weight: 500;
+      color: #111827;
+    }
+    .card h3 {
+      font-weight: 500;
+      color: #1e1b4b;
+    }
+    .muted {
+      color: #64748b;
+      font-weight: 300;
+    }
+    label span {
+      color: #475569;
+      font-weight: 400;
+    }
+    input, textarea, select {
+      border-color: rgba(148, 163, 184, .42);
+      border-radius: 10px;
+      background: rgba(255,255,255,.86);
+      color: #1e293b;
+      font-weight: 300;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 4px rgba(139, 92, 246, .14);
+    }
+    .btn {
+      border-radius: 10px;
+      border-color: rgba(148, 163, 184, .42);
+      background: rgba(255,255,255,.88);
+      color: #334155;
+      font-weight: 400;
+      box-shadow: 0 8px 20px rgba(71, 85, 105, .06);
+    }
+    .btn.primary {
+      border-color: transparent;
+      background: linear-gradient(135deg, #6d5dfc, #10b8d9);
+      color: #fff;
+      box-shadow: 0 14px 34px rgba(79, 70, 229, .28);
+    }
+    .thumb, .reference-section, .record-item {
+      border-color: rgba(203, 213, 225, .72);
+      border-radius: 12px;
+      background: rgba(255,255,255,.74);
+    }
+    .thumb img, .result-card img {
+      border-radius: 10px;
+    }
+    .lock-block, pre {
+      border-radius: 10px;
+      background: rgba(248, 250, 252, .88);
+      border-left-color: #8b5cf6;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>AI 漫画 / 角色生图工作台</h1>
+      <p id="topMeta"></p>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="saveDraft(true)">保存草稿</button>
+      <button class="btn" onclick="toggleHistory()">历史记录</button>
+      <button class="btn" onclick="downloadProject()">导出项目 JSON</button>
+      <button class="btn" onclick="resetDemo()">恢复演示</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main"></main>
+  </div>
+  <div id="historyModal"></div>
+  <div id="imageModal"></div>
+
+  <script>
+    const STORAGE_KEY = "ai-comic-simple-flow-html";
+    const IMAGE_DB_NAME = "ai-comic-reference-images";
+    const IMAGE_DB_STORE = "referenceImages";
+    const BUILTIN_PPIO_API_KEY = "";
+    const BUILTIN_GRSAI_API_KEY = "";
+    const TEXT_MODEL_OPTIONS = {
+      "ppio-deepseek-v4-flash": {
+        label: "DeepSeek V4 Flash（PPIO）",
+        provider: "ppio",
+        baseUrl: "https://api.ppio.com/openai",
+        model: "deepseek/deepseek-v4-flash"
+      },
+      "grsai-gemini-3.5-flash": {
+        label: "Gemini 3.5 Flash（Grsai）",
+        provider: "grsai",
+        baseUrl: "https://grsaiapi.com",
+        model: "gemini-3.5-flash"
+      },
+      "grsai-gemini-3.1-pro": {
+        label: "Gemini 3.1 Pro（Grsai）",
+        provider: "grsai",
+        baseUrl: "https://grsaiapi.com",
+        model: "gemini-3.1-pro"
+      }
+    };
+    const IMAGE_MODEL_OPTIONS = {
+      "ppio-gpt-image-2": {
+        label: "欧派云版 GPT Image 2",
+        provider: "ppio",
+        textToImageUrl: "https://api.ppio.com/v3/gpt-image-2-text-to-image",
+        editUrl: "https://api.ppio.com/v3/gpt-image-2-edit",
+        model: "gpt-image-2"
+      },
+      "grsai-gpt-image-2": {
+        label: "Grsai GPT Image 2",
+        provider: "grsai",
+        url: "https://grsaiapi.com/v1/api/generate",
+        model: "gpt-image-2"
+      },
+      "grsai-nano-banana-pro": {
+        label: "Grsai nano-banana-pro",
+        provider: "grsai",
+        url: "https://grsaiapi.com/v1/api/generate",
+        model: "nano-banana-pro"
+      }
+    };
+    const API_CONFIG = {
+      useRealApi: true,
+      fallbackToMock: false,
+      deepseekBaseUrl: "https://api.ppio.com/openai",
+      deepseekModel: "deepseek/deepseek-v4-flash",
+      imageTextToImageUrl: "https://api.ppio.com/v3/gpt-image-2-text-to-image",
+      imageEditUrl: "https://api.ppio.com/v3/gpt-image-2-edit",
+      imageQuality: "medium",
+      imageBackground: "auto",
+      imageOutputFormat: "png"
+    };
+    const steps = [
+      ["input", "输入剧情 + 参考图"],
+      ["story", "优化剧情"],
+      ["plan", "生成分镜描述"],
+      ["generate", "生成图片提示词"],
+      ["prompts", "预览优化提示词"],
+      ["preview", "结果预览下载"]
+    ];
+
+    let currentStep = "input";
+    let isBusy = false;
+    let busyText = "";
+    let historyOpen = false;
+    let imagePreview = null;
+
+    const $ = (id) => document.getElementById(id);
+    const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const esc = (value = "") => String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+    const lines = (value = "") => value.split(/\n/).map((x) => x.trim()).filter(Boolean);
+
+    function imagePlaceholder(title, variant = 0) {
+      const palettes = [
+        ["#23324d", "#a7d7c5", "#f4c95d"],
+        ["#2d2545", "#8b5cf6", "#f0abfc"],
+        ["#103f4d", "#14b8a6", "#f8fafc"],
+        ["#3a2b25", "#f59e0b", "#fef3c7"]
+      ];
+      const c = palettes[variant % palettes.length];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1280" viewBox="0 0 960 1280">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${c[0]}"/><stop offset="1" stop-color="${c[1]}"/></linearGradient></defs>
+        <rect width="960" height="1280" fill="url(#g)"/>
+        <rect x="82" y="88" width="796" height="1104" rx="28" fill="rgba(255,255,255,.13)" stroke="rgba(255,255,255,.42)" stroke-width="4"/>
+        <circle cx="320" cy="390" r="118" fill="${c[2]}" opacity=".86"/>
+        <path d="M170 930 C 330 760, 535 820, 790 610 L 790 1115 L 170 1115 Z" fill="rgba(255,255,255,.28)"/>
+        <text x="480" y="675" text-anchor="middle" font-family="Arial,sans-serif" font-size="54" font-weight="700" fill="#fff">${title}</text>
+      </svg>`;
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    }
+
+    function demoState() {
+      return {
+        story: "深夜教室里，容易紧张的男学生发现作业本上出现紫色光芒。一位来自星空裂隙的神秘女角色现身，要求他帮忙找回遗失的王冠碎片。",
+        requirements: "",
+        references: [],
+        optimizedStory: "",
+        storyApproved: false,
+        storyboard: [],
+        storyboardApproved: false,
+        outputMode: "comic",
+        textModel: "ppio-deepseek-v4-flash",
+        imageModel: "ppio-gpt-image-2",
+        generateCount: 3,
+        totalComicPanels: 12,
+        panelsPerComicImage: 4,
+        aspectRatio: "3:4",
+        imageQuality: "medium",
+        promptOptimization: "",
+        imagePrompts: [],
+        results: [],
+        records: [],
+        logs: ["已加载空白参考图项目"],
+        lastApiError: "",
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || demoState();
+    state.references = (state.references || []).filter(ref => !["ref-boy", "ref-girl", "ref-classroom"].includes(ref.id));
+    state.records = state.records || [];
+    state.imagePrompts = state.imagePrompts || [];
+    state.promptOptimization = state.promptOptimization || "";
+    state.logs = state.logs || [];
+    state.lastApiError = state.lastApiError || "";
+    state.panelsPerComicImage = state.panelsPerComicImage || 4;
+    state.totalComicPanels = state.totalComicPanels || Math.max(4, Number(state.generateCount || 3) * Number(state.panelsPerComicImage || 4));
+    state.imageQuality = state.imageQuality || API_CONFIG.imageQuality || "medium";
+    state.textModel = state.textModel || "ppio-deepseek-v4-flash";
+    state.imageModel = state.imageModel || "ppio-gpt-image-2";
+    state.references = (state.references || []).map((ref, index) => normalizeReference(ref, index));
+
+    function normalizeReference(ref, index = 0) {
+      const isCharacter = ref.type === "角色图";
+      const sameTypeBefore = (state?.references || []).slice(0, index).filter(item => item.type === ref.type).length;
+      return {
+        ...ref,
+        roleName: ref.roleName || (isCharacter ? (sameTypeBefore === 0 ? "男主" : sameTypeBefore === 1 ? "女主" : `角色${sameTypeBefore + 1}`) : (sameTypeBefore === 0 ? "场景" : `场景${sameTypeBefore + 1}`)),
+        aliases: ref.aliases || "",
+        mustKeep: ref.mustKeep || "",
+        forbidden: ref.forbidden || "",
+        lockNote: ref.lockNote || ""
+      };
+    }
+
+    function getDraftState() {
+      return {
+        ...state,
+        references: (state.references || []).map(ref => ({
+          ...ref,
+          url: ref.url && ref.url.startsWith("data:") ? "" : ref.url,
+          imagePersisted: Boolean(ref.imagePersisted),
+          unsavedImageData: false
+        })),
+        results: (state.results || []).map(result => ({
+          ...result,
+          url: result.url && result.url.startsWith("data:") ? "" : result.url
+        })),
+        records: (state.records || []).map(record => ({
+          ...record,
+          url: record.url && record.url.startsWith("data:") ? "" : record.url
+        }))
+      };
+    }
+
+    function openImageDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(IMAGE_DB_NAME, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(IMAGE_DB_STORE)) {
+            db.createObjectStore(IMAGE_DB_STORE, { keyPath: "id" });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function putReferenceImage(id, url) {
+      if (!id || !url || !url.startsWith("data:")) return;
+      const db = await openImageDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_DB_STORE, "readwrite");
+        tx.objectStore(IMAGE_DB_STORE).put({ id, url, updatedAt: new Date().toISOString() });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    }
+
+    async function getReferenceImage(id) {
+      const db = await openImageDb();
+      const record = await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_DB_STORE, "readonly");
+        const request = tx.objectStore(IMAGE_DB_STORE).get(id);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return record?.url || "";
+    }
+
+    async function deleteReferenceImage(id) {
+      const db = await openImageDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_DB_STORE, "readwrite");
+        tx.objectStore(IMAGE_DB_STORE).delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    }
+
+    async function clearReferenceImageDb() {
+      const db = await openImageDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_DB_STORE, "readwrite");
+        tx.objectStore(IMAGE_DB_STORE).clear();
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    }
+
+    async function restoreReferenceImages() {
+      const refs = state.references || [];
+      let restored = 0;
+      for (const ref of refs) {
+        if (!ref.url && ref.imagePersisted) {
+          try {
+            const url = await getReferenceImage(ref.id);
+            if (url) {
+              ref.url = url;
+              restored += 1;
+            }
+          } catch (error) {
+            console.warn("参考图恢复失败", ref.id, error);
+          }
+        }
+      }
+      if (restored) addRecordLog(`已恢复参考图 ${restored} 张`);
+    }
+
+    function saveDraft(addLog) {
+      state.updatedAt = new Date().toISOString();
+      if (addLog) addRecordLog("已保存草稿");
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(getDraftState()));
+      } catch (error) {
+        console.warn("草稿保存失败，正在清理旧草稿并保存轻量版本。", error);
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(getDraftState()));
+        } catch (retryError) {
+          console.warn("轻量草稿仍保存失败，仅保留当前页面内存数据。", retryError);
+        }
+      }
+      render();
+    }
+
+    function addRecordLog(text) {
+      state.logs = [text, ...(state.logs || [])].slice(0, 20);
+    }
+
+    function resetDemo() {
+      state = demoState();
+      currentStep = "input";
+      clearReferenceImageDb().catch(error => console.warn("清空参考图缓存失败", error));
+      saveDraft(false);
+    }
+
+    function setStep(step) {
+      currentStep = step;
+      render();
+    }
+
+    function setValue(key, value) {
+      state[key] = value;
+      if (["outputMode", "generateCount", "panelsPerComicImage", "totalComicPanels", "aspectRatio", "imageQuality", "textModel", "imageModel"].includes(key)) {
+        state.imagePrompts = [];
+        state.results = [];
+      }
+      saveDraft(false);
+    }
+
+    function toggleHistory() {
+      historyOpen = !historyOpen;
+      render();
+    }
+
+    function closeHistory(event) {
+      if (event.target.classList.contains("modal-backdrop")) {
+        historyOpen = false;
+        render();
+      }
+    }
+
+    function stepStatus(step) {
+      if (step === "input") return state.story && state.references.length ? "已填写" : "未完成";
+      if (step === "story") return state.storyApproved ? "已通过" : state.optimizedStory ? "待审核" : "未生成";
+      if (step === "plan") return state.storyboardApproved ? "已通过" : state.storyboard.length ? "待审核" : "未生成";
+      if (step === "generate") return state.imagePrompts.length ? "已生成提示词" : "待生成提示词";
+      if (step === "prompts") return state.imagePrompts.length ? "待生图" : "未生成";
+      if (step === "preview") return state.results.length ? "可下载" : "未生成";
+      return "";
+    }
+
+    function apiErrorHtml() {
+      return state.lastApiError
+        ? `<div class="status-line" style="background:#fef2f2;color:#b91c1c">${esc(state.lastApiError)}</div>`
+        : "";
+    }
+
+    function render() {
+      $("topMeta").textContent = `当前模式：${state.outputMode === "comic" ? "剧情图" : "纯图"} · 数量：${state.generateCount} · 文字：${textModelLabel()} · 生图：${imageModelLabel()} · 草稿：${new Date(state.updatedAt).toLocaleString()}`;
+      $("sidebar").innerHTML = steps.map(([key, title], index) => `
+        <button class="step-btn ${currentStep === key ? "active" : ""}" onclick="setStep('${key}')">
+          ${index + 1}. ${title}
+          <small>${stepStatus(key)}</small>
+        </button>
+      `).join("");
+      $("main").innerHTML = renderMain();
+      $("historyModal").innerHTML = historyOpen ? renderRecordsModal() : "";
+      $("imageModal").innerHTML = imagePreview ? renderImageModal() : "";
+    }
+
+    function renderMain() {
+      const busy = isBusy ? `<div class="status-line">${esc(busyText || "正在调用模型...")}</div>` : "";
+      if (currentStep === "input") return busy + apiErrorHtml() + renderInputStep();
+      if (currentStep === "story") return busy + apiErrorHtml() + renderStoryStep();
+      if (currentStep === "plan") return busy + apiErrorHtml() + renderPlanStep();
+      if (currentStep === "generate") return busy + apiErrorHtml() + renderGenerateStep();
+      if (currentStep === "prompts") return busy + apiErrorHtml() + renderPromptReviewStep();
+      return busy + apiErrorHtml() + renderPreviewStep();
+    }
+
+    function renderModelSelectors({ includeImage = true } = {}) {
+      return `
+        <div class="grid-2" style="margin-top:14px">
+          <label>
+            <span>文字模型</span>
+            <select onchange="setValue('textModel', this.value)">
+              ${Object.entries(TEXT_MODEL_OPTIONS).map(([key, option]) => `<option value="${key}" ${state.textModel === key ? "selected" : ""}>${esc(option.label)}</option>`).join("")}
+            </select>
+          </label>
+          ${includeImage ? `
+            <label>
+              <span>生图模型</span>
+              <select onchange="setValue('imageModel', this.value)">
+                ${Object.entries(IMAGE_MODEL_OPTIONS).map(([key, option]) => `<option value="${key}" ${state.imageModel === key ? "selected" : ""}>${esc(option.label)}</option>`).join("")}
+              </select>
+            </label>
+          ` : `
+            <div class="lock-block">当前文字模型：${esc(textModelLabel())}</div>
+          `}
+        </div>
+        ${renderModelKeyWarning(includeImage)}
+      `;
+    }
+
+    function renderModelKeyWarning(includeImage = true) {
+      const providers = new Set([textModelConfig().provider]);
+      if (includeImage) providers.add(imageModelConfig().provider);
+      const envNames = Array.from(providers).map(provider => provider === "grsai" ? "GRSAI_API_KEY" : "PPIO_API_KEY");
+      return `<div class="status-line" style="background:#f8fafc;color:#475569">线上部署时请在 Vercel 环境变量中配置：${esc(envNames.join("、"))}。</div>`;
+    }
+
+    function renderInputStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>1、输入剧情 + 参考图</h2>
+              <p class="muted">输入剧情梗概 / 剧情概要，上传角色图和场景图，再选择漫画总格数 N。</p>
+            </div>
+            <button class="btn primary" ${isBusy ? "disabled" : ""} onclick="optimizeStory()">优化剧情</button>
+          </div>
+          <div class="grid-2">
+            <label>
+              <span>剧情梗概 / 剧情概要</span>
+              <textarea style="min-height:120px" onchange="setValue('story', this.value)">${esc(state.story)}</textarea>
+            </label>
+            <label>
+              <span>漫画总格数 N</span>
+              <input type="number" min="1" max="80" value="${state.totalComicPanels || 12}" onchange="setValue('totalComicPanels', Number(this.value))">
+            </label>
+          </div>
+          ${renderModelSelectors({ includeImage: false })}
+        </div>
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>参考图</h2>
+              <p class="muted">上传时选择分类：角色图或场景图。角色图可填写“角色名/身份”，生图时会按当前分镜涉及的角色筛选传给所选生图模型。</p>
+              <p class="muted">参考图会保存到本机浏览器缓存，刷新后会自动恢复；清空草稿或更换浏览器后需要重新上传。</p>
+            </div>
+          </div>
+          <div class="reference-columns">
+            ${renderReferenceSection("角色图", "人物图 / 角色图", "上传人物图")}
+            ${renderReferenceSection("场景图", "场景图", "上传场景图")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderReferenceSection(type, title, uploadLabel) {
+      const refs = state.references
+        .map((ref, index) => ({ ref, index }))
+        .filter(item => item.ref.type === type);
+      return `
+        <div class="reference-section">
+          <div class="toolbar">
+            <h3>${title}</h3>
+            <label class="btn">${uploadLabel}<input type="file" accept="image/*" multiple style="display:none" onchange="uploadReferences(this.files,'${type}')"></label>
+          </div>
+          <div class="thumbs">${refs.map(item => renderReference(item.ref, item.index)).join("") || `<p class="muted">暂无${title}，请上传。</p>`}</div>
+        </div>
+      `;
+    }
+
+    function renderReference(ref, index) {
+      const isCharacter = ref.type === "角色图";
+      return `
+        <div class="thumb">
+          <button class="icon-delete" title="删除" aria-label="删除" onclick="removeReference(${index})">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M6 6l1 15h10l1-15"></path><path d="M10 11v6"></path><path d="M14 11v6"></path>
+            </svg>
+          </button>
+          ${ref.url ? `<img src="${ref.url}" alt="${esc(ref.name)}" onclick="openReferencePreview(${index})">` : `<div style="height:86px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px">需重新上传</div>`}
+          <h4>${esc(ref.name)}</h4>
+          <p class="muted">${ref.type}</p>
+          <label>
+            <span>${isCharacter ? "角色名 / 身份" : "场景名"}</span>
+            <input value="${esc(ref.roleName || "")}" placeholder="${isCharacter ? "如：男主 / 女主" : "如：夜晚教室"}" onchange="updateReference(${index}, 'roleName', this.value)">
+          </label>
+        </div>
+      `;
+    }
+
+    function renderStoryStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>2、优化剧情</h2>
+              <p class="muted">根据剧情概要、角色设定和参考图优化剧情。优化后的剧情可编辑，审核通过后进入分镜描述。</p>
+            </div>
+            <div class="actions">
+              <button class="btn" ${isBusy ? "disabled" : ""} onclick="optimizeStory()">重新优化剧情</button>
+              <button class="btn primary" ${state.optimizedStory ? "" : "disabled"} onclick="approveStory()">审核通过，下一步</button>
+            </div>
+          </div>
+          <label>
+            <span>优化后的剧情</span>
+            <textarea style="min-height:360px" onchange="state.optimizedStory=this.value; state.storyApproved=false; saveDraft(false)">${esc(state.optimizedStory || "请先在上一步点击“优化剧情”。")}</textarea>
+          </label>
+        </div>
+      `;
+    }
+
+    function renderPlanStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>3、生成分镜描述</h2>
+              <p class="muted">根据漫画剧情描述拆成分镜图，一个漫画格为一个分镜。内容可编辑，审核通过后进入图片提示词生成。</p>
+            </div>
+            <div class="actions">
+              <button class="btn primary" ${state.storyApproved && !isBusy ? "" : "disabled"} onclick="generateStoryboard()">生成分镜描述</button>
+              <button class="btn" onclick="addStoryboardItem()">新增分镜</button>
+              <button class="btn primary" ${state.storyboard.length ? "" : "disabled"} onclick="approveStoryboard()">审核通过，下一步</button>
+            </div>
+          </div>
+        </div>
+        ${state.storyboard.map((item, index) => renderStoryboardItem(item, index)).join("")}
+      `;
+    }
+
+    function renderStoryboardItem(item, index) {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <h3>分镜 ${index + 1}</h3>
+            <div class="actions">
+              <button class="btn" onclick="moveStoryboard(${index},-1)">上移</button>
+              <button class="btn" onclick="moveStoryboard(${index},1)">下移</button>
+              <button class="btn danger" onclick="removeStoryboardItem(${index})">删除</button>
+            </div>
+          </div>
+          <div class="grid-2">
+            <label><span>画面内容</span><textarea onchange="setStoryboardField(${index}, 'scene', this.value)">${esc(item.scene)}</textarea></label>
+            <label><span>人物动作 / 表情</span><textarea onchange="setStoryboardField(${index}, 'action', this.value)">${esc(item.action)}</textarea></label>
+            <label><span>镜头语言</span><input value="${esc(item.camera)}" onchange="setStoryboardField(${index}, 'camera', this.value)"></label>
+            <label><span>主角台词</span><input value="${esc(item.text)}" onchange="setStoryboardField(${index}, 'text', this.value)"></label>
+          </div>
+          <div class="grid-2" style="margin-top:14px">
+            <label>
+              <span>本分镜出现角色</span>
+              <div class="lock-block">${renderPanelCharacterChecks(item, index)}</div>
+            </label>
+            <label>
+              <span>本分镜场景绑定</span>
+              <select onchange="setStoryboardScene(${index}, this.value)">
+                <option value="">自动匹配场景图</option>
+                ${state.references.filter(ref => ref.type === "场景图").map(ref => `<option value="${ref.id}" ${(item.sceneRefId || "") === ref.id ? "selected" : ""}>${esc(ref.roleName || ref.name)}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPanelCharacterChecks(item, panelIndex) {
+      const characterRefs = state.references.filter(ref => ref.type === "角色图");
+      if (!characterRefs.length) return "暂无角色图，请先在第 1 步上传。";
+      const selected = new Set(item.characterIds || []);
+      return characterRefs.map(ref => `
+        <label style="display:block;margin:0 0 6px">
+          <input style="width:auto;margin-right:6px" type="checkbox" ${selected.has(ref.id) ? "checked" : ""} onchange="togglePanelCharacter(${panelIndex}, '${ref.id}', this.checked)">
+          ${esc(ref.roleName || ref.name)}
+        </label>
+      `).join("");
+    }
+
+    function invalidateGeneratedPrompts() {
+      state.imagePrompts = [];
+      state.results = [];
+    }
+
+    function setStoryboardField(index, field, value) {
+      if (!state.storyboard[index]) return;
+      state.storyboard[index][field] = value;
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function togglePanelCharacter(index, refId, checked) {
+      if (!state.storyboard[index]) return;
+      const current = new Set(state.storyboard[index].characterIds || []);
+      if (checked) current.add(refId);
+      else current.delete(refId);
+      state.storyboard[index].characterIds = Array.from(current);
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function setStoryboardScene(index, refId) {
+      if (!state.storyboard[index]) return;
+      state.storyboard[index].sceneRefId = refId || "";
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function renderGenerateStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>4、生成图片提示词</h2>
+              <p class="muted">选择生图参数后，为每一张图片生成对应的图片生成提示词。</p>
+            </div>
+            <button class="btn primary" ${state.storyboardApproved && !isBusy ? "" : "disabled"} onclick="generatePrompts()">生成提示词</button>
+          </div>
+          <div class="grid-3">
+            <label>
+              <span>文字模型</span>
+              <select onchange="setValue('textModel', this.value)">
+                ${Object.entries(TEXT_MODEL_OPTIONS).map(([key, option]) => `<option value="${key}" ${state.textModel === key ? "selected" : ""}>${esc(option.label)}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              <span>生图模型</span>
+              <select onchange="setValue('imageModel', this.value)">
+                ${Object.entries(IMAGE_MODEL_OPTIONS).map(([key, option]) => `<option value="${key}" ${state.imageModel === key ? "selected" : ""}>${esc(option.label)}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              <span>生图模式</span>
+              <select onchange="setValue('outputMode', this.value)">
+                <option value="comic" ${state.outputMode === "comic" ? "selected" : ""}>剧情图</option>
+                <option value="illustration" ${state.outputMode === "illustration" ? "selected" : ""}>纯图</option>
+              </select>
+            </label>
+            <label>
+              <span>生成数量</span>
+              <input type="number" min="1" max="12" value="${state.generateCount}" onchange="setValue('generateCount', Number(this.value))">
+            </label>
+            <label>
+              <span>每张剧情图分镜数</span>
+              <input type="number" min="3" max="8" value="${state.panelsPerComicImage || 4}" onchange="setValue('panelsPerComicImage', Number(this.value))">
+            </label>
+            <label>
+              <span>画面比例</span>
+              <select onchange="setValue('aspectRatio', this.value)">
+                ${["1:1", "3:4", "4:3", "9:16", "16:9"].map(r => `<option ${state.aspectRatio === r ? "selected" : ""}>${r}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              <span>生图质量等级</span>
+              <select onchange="setValue('imageQuality', this.value)">
+                <option value="low" ${state.imageQuality === "low" ? "selected" : ""}>low 低</option>
+                <option value="medium" ${state.imageQuality === "medium" ? "selected" : ""}>medium 中等</option>
+                <option value="high" ${state.imageQuality === "high" ? "selected" : ""}>high 最佳</option>
+              </select>
+            </label>
+          </div>
+          ${renderModelKeyWarning(true)}
+        </div>
+        <div class="card">
+          <h2>将用于生成提示词的内容</h2>
+          <pre>${esc(buildPromptPreview())}</pre>
+        </div>
+      `;
+    }
+
+    function renderPromptReviewStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>5、预览并优化生图提示词</h2>
+              <p class="muted">这里展示每一张图最终会传给 ${esc(imageModelLabel())} 的提示词。可手动编辑，也可填写优化要求后批量优化。</p>
+            </div>
+            <div class="actions">
+              <button class="btn" ${state.storyboardApproved && !isBusy ? "" : "disabled"} onclick="generatePrompts()">重新生成提示词</button>
+              <button class="btn primary" ${state.imagePrompts.length && !isBusy ? "" : "disabled"} onclick="generateImagesFromPrompts()">生成图片</button>
+            </div>
+          </div>
+          <label>
+            <span>提示词优化要求</span>
+            <textarea placeholder="例如：更像日漫分镜，增强对白气泡可读性，角色脸更贴近参考图，不要额外增加人物。" onchange="setValue('promptOptimization', this.value)">${esc(state.promptOptimization || "")}</textarea>
+          </label>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn" ${state.imagePrompts.length && !isBusy ? "" : "disabled"} onclick="optimizeGeneratedPrompts()">根据要求优化提示词</button>
+          </div>
+        </div>
+        ${state.imagePrompts.map((item, index) => renderPromptCard(item, index)).join("") || `<div class="card"><p class="muted">还没有生成提示词，请回到第 4 步生成。</p></div>`}
+      `;
+    }
+
+    function renderPromptCard(item, index) {
+      const selectedRefs = (item.referenceIds || [])
+        .map(id => state.references.find(ref => ref.id === id))
+        .filter(Boolean);
+      const refs = selectedRefs
+        .map((ref, refIndex) => `${referenceSlotName(refIndex)}=${ref.roleName || ref.name}（${ref.type}）`)
+        .join("；") || "无";
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h3>${esc(item.title || `提示词-${index + 1}`)}</h3>
+              <p class="muted">分镜 ${item.startIndex + 1}-${item.startIndex + item.panelCount} · ${refs}</p>
+            </div>
+            <button class="btn" onclick="copyPrompt(${index})">复制提示词</button>
+          </div>
+          <div class="lock-block">
+            <b>实际传给 ${esc(imageModelLabel())}</b><br>
+            接口：${esc(selectedImageInterfaceName(selectedRefs.length))}<br>
+            ${selectedRefs.map((ref, refIndex) => `${referenceSlotName(refIndex)} ${esc(ref.roleName || ref.name)} - ${esc(ref.name)}`).join("<br>") || "无参考图，将走文生图接口。"}
+          </div>
+          <label>
+            <span>最终生图提示词</span>
+            <textarea style="min-height:300px" onchange="updatePromptText(${index}, this.value)">${esc(item.prompt)}</textarea>
+          </label>
+        </div>
+      `;
+    }
+
+    function renderPreviewStep() {
+      return `
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>6、结果预览，保存下载</h2>
+              <p class="muted">结果会进入历史记录，点击顶部“历史记录”可查看之前生成的内容。</p>
+            </div>
+            <div class="actions">
+              <button class="btn" ${state.imagePrompts.length && !isBusy ? "" : "disabled"} onclick="generateImagesFromPrompts()">使用当前提示词重新生成</button>
+              <button class="btn primary" onclick="downloadProject()">保存项目 JSON</button>
+            </div>
+          </div>
+        </div>
+        <div class="result-grid">
+          ${state.results.map((result, index) => renderResult(result, index)).join("") || `<div class="card"><p class="muted">还没有生成结果，请先到“预览优化提示词”生成图片。</p></div>`}
+        </div>
+      `;
+    }
+
+    function renderResult(result, index) {
+      return `
+        <div class="card result-card">
+          <img src="${result.url}" alt="${esc(result.title)}" onclick="openResultPreview(${index})">
+          <h3>${esc(result.title)}</h3>
+          <p class="muted">${result.mode === "comic" ? "剧情图" : "纯图"} · ${result.createdAt}</p>
+          <details>
+            <summary>查看本图提示词</summary>
+            <pre>${esc(result.prompt)}</pre>
+          </details>
+          <div class="actions">
+            <a class="btn" href="${result.url}" download="${result.title}.svg">下载图片</a>
+            <button class="btn" onclick="markBest('${result.id}')">${result.best ? "已标记最佳" : "标记最佳"}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecordsModal() {
+      return `
+        <div class="modal-backdrop" onclick="closeHistory(event)">
+          <div class="modal-panel" onclick="event.stopPropagation()">
+            <div class="toolbar" style="margin-bottom:10px">
+              <div>
+                <h3>历史生成记录</h3>
+                <p class="muted" style="margin:4px 0 0">之前生成的结果都会保留在这里，刷新后也能看到。</p>
+              </div>
+              <div class="actions">
+                <button class="btn danger" onclick="clearRecords()">清空记录</button>
+                <button class="btn" onclick="toggleHistory()">关闭</button>
+              </div>
+            </div>
+            <div class="record-list">
+              ${state.records.map((record, index) => `
+                <div class="record-item">
+                  <img src="${record.url}" alt="${esc(record.title)}" onclick="openRecordPreview(${index})" style="cursor:zoom-in">
+                  <b>${esc(record.title)}</b>
+                  <p class="muted">${record.mode === "comic" ? "剧情图" : "纯图"} · ${record.createdAt}</p>
+                  <a class="btn" href="${record.url}" download="${record.title}.svg">下载</a>
+                </div>
+              `).join("") || `<p class="muted">暂无生成记录。</p>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error(`读取图片失败：${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadReferences(files, type) {
+      const fileList = Array.from(files || []);
+      for (const file of fileList) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const sameTypeCount = state.references.filter(ref => ref.type === type).length;
+        const ref = {
+          id: uid("ref"),
+          type,
+          name: file.name,
+          roleName: type === "角色图"
+            ? (sameTypeCount === 0 ? "男主" : sameTypeCount === 1 ? "女主" : `角色${sameTypeCount + 1}`)
+            : (sameTypeCount === 0 ? "场景" : `场景${sameTypeCount + 1}`),
+          aliases: "",
+          mustKeep: "",
+          forbidden: "",
+          lockNote: "",
+          imagePersisted: true,
+          url: dataUrl
+        };
+        state.references.unshift(ref);
+        try {
+          await putReferenceImage(ref.id, dataUrl);
+        } catch (error) {
+          console.warn("参考图持久化失败", error);
+          ref.imagePersisted = false;
+        }
+      }
+      addRecordLog(`上传${type} ${fileList.length} 张`);
+      saveDraft(false);
+    }
+
+    function updateReference(index, field, value) {
+      if (!state.references[index]) return;
+      state.references[index][field] = value;
+      state.imagePrompts = [];
+      state.results = [];
+      saveDraft(false);
+    }
+
+    function removeReference(index) {
+      const removed = state.references[index];
+      if (!removed) return;
+      state.references.splice(index, 1);
+      deleteReferenceImage(removed.id).catch(error => console.warn("删除参考图缓存失败", error));
+      state.storyboard = (state.storyboard || []).map(panel => ({
+        ...panel,
+        characterIds: (panel.characterIds || []).filter(id => id !== removed.id),
+        sceneRefId: panel.sceneRefId === removed.id ? "" : panel.sceneRefId
+      }));
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function openReferencePreview(index) {
+      const ref = state.references[index];
+      if (!ref || !ref.url) return;
+      imagePreview = {
+        title: ref.roleName || ref.name,
+        url: ref.url,
+        meta: `${ref.type} · ${ref.name}`,
+        prompt: ref.type === "角色图" ? buildCharacterLockBlock(ref, index + 1) : buildSceneLockBlock(ref, index + 1)
+      };
+      render();
+    }
+
+    function openResultPreview(index) {
+      const result = state.results[index];
+      if (!result || !result.url) return;
+      imagePreview = {
+        title: result.title,
+        url: result.url,
+        meta: `${result.mode === "comic" ? "剧情图" : "纯图"} · ${result.createdAt}`,
+        prompt: result.prompt
+      };
+      render();
+    }
+
+    function openRecordPreview(index) {
+      const record = state.records[index];
+      if (!record || !record.url) return;
+      imagePreview = {
+        title: record.title,
+        url: record.url,
+        meta: `${record.mode === "comic" ? "剧情图" : "纯图"} · ${record.createdAt}`,
+        prompt: record.prompt
+      };
+      render();
+    }
+
+    function closeImagePreview(event) {
+      if (!event || event.target.classList.contains("image-backdrop")) {
+        imagePreview = null;
+        render();
+      }
+    }
+
+    function renderImageModal() {
+      return `
+        <div class="image-backdrop" onclick="closeImagePreview(event)">
+          <div class="image-meta">
+            <h3>${esc(imagePreview.title)}</h3>
+            <p>${esc(imagePreview.meta || "")} · 原画质预览，可滚动查看细节</p>
+          </div>
+          <div class="image-toolbar" onclick="event.stopPropagation()">
+            <button class="btn" onclick="imagePreview=null; render()">关闭</button>
+          </div>
+          <div class="image-stage" onclick="event.stopPropagation()">
+            <img class="preview-image" src="${imagePreview.url}" alt="${esc(imagePreview.title)}">
+          </div>
+        </div>
+      `;
+    }
+
+    function normalizeEndpoint(baseUrl, path) {
+      const base = (baseUrl || "").replace(/\/+$/, "");
+      if (base.endsWith("/v1")) return `${base}${path}`;
+      return `${base}/v1${path}`;
+    }
+
+    function getProviderKey(provider) {
+      return provider === "grsai" ? BUILTIN_GRSAI_API_KEY : BUILTIN_PPIO_API_KEY;
+    }
+
+    function textModelConfig() {
+      return TEXT_MODEL_OPTIONS[state.textModel] || TEXT_MODEL_OPTIONS["ppio-deepseek-v4-flash"];
+    }
+
+    function imageModelConfig() {
+      return IMAGE_MODEL_OPTIONS[state.imageModel] || IMAGE_MODEL_OPTIONS["ppio-gpt-image-2"];
+    }
+
+    function textModelLabel() {
+      return textModelConfig().label;
+    }
+
+    function imageModelLabel() {
+      return imageModelConfig().label;
+    }
+
+    function selectedImageInterfaceName(referenceCount = 0) {
+      const config = imageModelConfig();
+      if (config.provider === "ppio") return referenceCount ? "gpt-image-2-edit" : "gpt-image-2-text-to-image";
+      return `${config.model} /v1/api/generate`;
+    }
+
+    function referenceSlotName(index) {
+      return imageModelConfig().provider === "grsai" ? `image_urls[${index}]` : `image[${index}]`;
+    }
+
+    function shouldUseRealApi() {
+      return Boolean(API_CONFIG.useRealApi);
+    }
+
+    async function callTextModel(userPrompt) {
+      const config = textModelConfig();
+      const response = await fetch("/api/text-model", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          label: config.label,
+          prompt: userPrompt,
+          messages: [
+            {
+              role: "system",
+              content: "你是专业漫画编剧和分镜师。输出必须清晰、结构化、可直接给用户审核编辑。"
+            },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.7
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || data.message || `${config.label} 调用失败：${response.status}`);
+      }
+      return data.choices?.[0]?.message?.content || "";
+    }
+
+    function referenceKeywordText(ref) {
+      return [ref.roleName, ref.name, ref.aliases, ref.mustKeep, ref.forbidden, ref.lockNote]
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\.[a-z0-9]+$/i, "");
+    }
+
+    function panelTextForMatching(panels = []) {
+      return panels
+        .map(item => [item.scene, item.action, item.camera, item.text].filter(Boolean).join(" "))
+        .join("\n");
+    }
+
+    function refMatchesText(ref, text) {
+      const source = String(text || "");
+      const keywords = referenceKeywordText(ref)
+        .split(/[，,、\s/|]+/)
+        .map(item => item.trim())
+        .filter(item => item.length >= 2);
+      return keywords.some(keyword => source.includes(keyword));
+    }
+
+    function sortReferencesForPrompt(refs = []) {
+      const roleRank = (ref) => {
+        const name = ref.roleName || "";
+        if (ref.type === "场景图") return 100;
+        if (name.includes("男主")) return 1;
+        if (name.includes("女主")) return 2;
+        if (name.includes("主角")) return 3;
+        return 10;
+      };
+      return [...refs].sort((a, b) => roleRank(a) - roleRank(b));
+    }
+
+    function uniqueReferences(refs = []) {
+      const seen = new Set();
+      return refs.filter(ref => {
+        if (!ref || seen.has(ref.id)) return false;
+        seen.add(ref.id);
+        return true;
+      });
+    }
+
+    function hasTwoCharacterCue(text = "") {
+      return /两人|二人|双人|对视|对话|交谈|一起|并肩|他们|她们|男.*女|女.*男|男主.*女主|女主.*男主/.test(text);
+    }
+
+    function addLikelyCharacterReferences(selectedCharacters, allCharacters, text = "") {
+      const sortedCharacters = sortReferencesForPrompt(allCharacters);
+      const next = [...selectedCharacters];
+      const addByKeyword = (keywords) => {
+        const found = sortedCharacters.find(ref => {
+          const name = `${ref.roleName || ""} ${ref.name || ""} ${ref.lockNote || ""}`;
+          return keywords.some(keyword => name.includes(keyword));
+        });
+        if (found) next.push(found);
+      };
+
+      if (/男主|男学生|男孩|少年|他\b|他[，。；、\s]/.test(text)) addByKeyword(["男主", "男", "少年", "学生"]);
+      if (/女主|女角色|女孩|少女|她\b|她[，。；、\s]/.test(text)) addByKeyword(["女主", "女", "少女", "女孩"]);
+      if (hasTwoCharacterCue(text) && sortedCharacters.length >= 2) next.push(sortedCharacters[0], sortedCharacters[1]);
+
+      return uniqueReferences(next);
+    }
+
+    function selectReferencesForPanels(panels = state.storyboard) {
+      const text = [
+        panelTextForMatching(panels),
+        state.outputMode === "illustration" ? (state.optimizedStory || state.story) : ""
+      ].join("\n");
+      const usable = (state.references || []).filter(ref => ref.url && !ref.url.startsWith("blob:"));
+      const characters = usable.filter(ref => ref.type === "角色图");
+      const scenes = usable.filter(ref => ref.type === "场景图");
+      const explicitCharacterIds = new Set(panels.flatMap(panel => panel.characterIds || []));
+      const explicitSceneIds = new Set(panels.map(panel => panel.sceneRefId).filter(Boolean));
+      let selectedCharacters = characters.filter(ref => explicitCharacterIds.has(ref.id) || refMatchesText(ref, text));
+      let selectedScenes = scenes.filter(ref => explicitSceneIds.has(ref.id) || refMatchesText(ref, text));
+      selectedCharacters = addLikelyCharacterReferences(selectedCharacters, characters, text);
+
+      // 分镜没有明确写角色名时，仍传第一张角色图作为“主角”锁定，不把其他角色混进去。
+      if (!selectedCharacters.length && characters.length) selectedCharacters = [sortReferencesForPrompt(characters)[0]];
+      if (!selectedScenes.length && scenes.length) selectedScenes = [sortReferencesForPrompt(scenes)[0]];
+
+      if (state.outputMode === "illustration") {
+        const primaryCharacter = sortReferencesForPrompt(selectedCharacters)[0] || sortReferencesForPrompt(characters)[0];
+        const primaryScene = sortReferencesForPrompt(selectedScenes)[0] || sortReferencesForPrompt(scenes)[0];
+        return [primaryCharacter, primaryScene].filter(Boolean);
+      }
+
+      return sortReferencesForPrompt([...selectedCharacters, ...selectedScenes]);
+    }
+
+    function getReferenceImagesForApi(selectedReferences = []) {
+      return selectedReferences
+        .filter(ref => ref.url && !ref.url.startsWith("blob:"))
+        .map(ref => ref.url);
+    }
+
+    function extractImageUrlFromResponse(value) {
+      if (!value) return "";
+      if (typeof value === "string") {
+        return /^(https?:\/\/|data:image\/)/.test(value) ? value : "";
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = extractImageUrlFromResponse(item);
+          if (found) return found;
+        }
+        return "";
+      }
+      if (typeof value === "object") {
+        if (value.b64_json) return `data:image/png;base64,${value.b64_json}`;
+        for (const key of ["url", "image_url", "image", "images", "data", "output", "result", "results", "urls"]) {
+          const found = extractImageUrlFromResponse(value[key]);
+          if (found) return found;
+        }
+      }
+      return "";
+    }
+
+    async function callImageModel(prompt, referenceImages = []) {
+      const config = imageModelConfig();
+      const size = sizeFromAspectRatio(state.aspectRatio);
+      const response = await fetch("/api/image-model", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          provider: config.provider,
+          label: config.label,
+          model: config.model,
+          prompt,
+          referenceImages,
+          size,
+          quality: state.imageQuality || API_CONFIG.imageQuality,
+          background: API_CONFIG.imageBackground,
+          output_format: API_CONFIG.imageOutputFormat,
+          aspect_ratio: state.aspectRatio,
+          textToImageUrl: config.textToImageUrl,
+          editUrl: config.editUrl,
+          url: config.url
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || data.message || `${config.label} API 调用失败：${response.status}`);
+      }
+      const imageUrl = extractImageUrlFromResponse(data);
+      if (imageUrl) return imageUrl;
+      throw new Error("生图接口返回中没有可识别的图片 URL。");
+    }
+
+    function sizeFromAspectRatio(ratio) {
+      const map = {
+        "1:1": "1024x1024",
+        "3:4": "1024x1536",
+        "4:3": "1536x1024",
+        "9:16": "2160x3840",
+        "16:9": "3840x2160"
+      };
+      return map[ratio] || "1024x1536";
+    }
+
+    function setBusy(text) {
+      isBusy = true;
+      busyText = text;
+      render();
+    }
+
+    function clearBusy() {
+      isBusy = false;
+      busyText = "";
+      render();
+    }
+
+    async function optimizeStory() {
+      setBusy(`正在调用 ${textModelLabel()} 优化剧情...`);
+      state.lastApiError = "";
+      if (shouldUseRealApi()) {
+        try {
+          const roleSummary = state.references
+            .filter(r => r.type === "角色图")
+            .map((r, index) => `角色${index + 1}：${r.roleName || r.name}，对应角色参考图：${r.name}`)
+            .join("；") || "暂无角色参考图";
+          const sceneSummary = state.references
+            .filter(r => r.type === "场景图")
+            .map((r, index) => `场景${index + 1}：${r.roleName || r.name}，对应场景参考图：${r.name}`)
+            .join("；") || "暂无场景参考图";
+          state.optimizedStory = await callTextModel([
+            "请根据用户提供的剧情概要、角色设定（附对应的角色参考图）和场景参考图，优化成一个适合后续拆分为多格漫画的完整剧情。",
+            "优化后的剧情需要包含明确的起、承、转、合，角色关系清楚，事件推进连贯，情绪变化明确，画面感强。",
+            "请保持角色设定、人物关系、场景氛围和参考图所体现的视觉基调一致。",
+            "当前阶段只输出优化后的完整剧情文本，不要输出分镜、格数拆分、标题、解释、前言或后记。",
+            "",
+            `剧情概要：${state.story}`,
+            `角色设定（附对应的角色参考图）：${roleSummary}`,
+            `场景参考图：${sceneSummary}`,
+            `后续计划拆分漫画总格数 N：${Number(state.totalComicPanels) || 12}`
+          ].join("\n"));
+          state.storyApproved = false;
+          addRecordLog(`${textModelLabel()} 已优化剧情，等待用户审核`);
+          currentStep = "story";
+          saveDraft(false);
+          clearBusy();
+          return;
+        } catch (error) {
+          addRecordLog(`${textModelLabel()} 调用失败：${error.message}`);
+          state.lastApiError = `${textModelLabel()} 调用失败：${error.message}`;
+          if (!API_CONFIG.fallbackToMock) {
+            alert(state.lastApiError);
+            clearBusy();
+            return;
+          }
+        }
+      }
+      const n = Number(state.totalComicPanels) || 12;
+      state.optimizedStory = `剧情围绕“${state.story}”展开。故事以清晰的日常或主场景开场，主角在熟悉环境中遭遇异常事件；随后角色之间产生互动和冲突，关系逐步明确；中段出现转折或危机，使主角必须做出选择；结尾形成阶段性结果，并留下适合继续展开的视觉悬念。整体剧情适合拆分为 ${n} 个漫画格，角色形象和场景氛围保持一致。`;
+      state.storyApproved = false;
+      addRecordLog("已优化剧情，等待用户审核");
+      currentStep = "story";
+      saveDraft(false);
+      clearBusy();
+    }
+
+    function approveStory() {
+      state.storyApproved = true;
+      addRecordLog("优化剧情审核通过");
+      currentStep = "plan";
+      saveDraft(false);
+    }
+
+    function parseStoryboardJson(text) {
+      const match = text.match(/\[[\s\S]*\]/);
+      if (!match) return null;
+      try {
+        const arr = JSON.parse(match[0]);
+        return arr.map((item) => ({
+          scene: item.scene || item.sceneDescription || item.画面内容 || "",
+          action: item.action || item.characterAction || item.人物动作 || "",
+          camera: item.camera || item.cameraAngle || item.镜头语言 || "中景",
+          text: item.text || item.dialogue || item.对白旁白 || "",
+          characterNames: item.characterNames || item.characters || item.characterRefs || item.出场角色 || [],
+          sceneRefName: item.sceneRefName || item.sceneRef || item.sceneName || item.场景绑定 || ""
+        })).filter(item => item.scene || item.action).map(item => bindPanelReferences(item));
+      } catch {
+        return null;
+      }
+    }
+
+    function normalizeNameList(value) {
+      if (Array.isArray(value)) return value.map(String).map(item => item.trim()).filter(Boolean);
+      return String(value || "").split(/[，,、/\s]+/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function bindPanelReferences(item) {
+      const text = [item.scene, item.action, item.text, normalizeNameList(item.characterNames).join(" "), item.sceneRefName].filter(Boolean).join(" ");
+      const characterRefs = state.references.filter(ref => ref.type === "角色图");
+      const sceneRefs = state.references.filter(ref => ref.type === "场景图");
+      const namedCharacters = normalizeNameList(item.characterNames);
+      let selectedCharacters = characterRefs.filter(ref => {
+        const keywords = normalizeNameList(referenceKeywordText(ref));
+        return namedCharacters.some(name => keywords.some(keyword => keyword.includes(name) || name.includes(keyword))) || refMatchesText(ref, text);
+      });
+      selectedCharacters = addLikelyCharacterReferences(selectedCharacters, characterRefs, text);
+      const selectedScene = sceneRefs.find(ref => {
+        const sceneName = String(item.sceneRefName || "");
+        return (sceneName && referenceKeywordText(ref).includes(sceneName)) || refMatchesText(ref, text);
+      }) || sceneRefs[0];
+      return {
+        ...item,
+        characterIds: uniqueReferences(selectedCharacters).map(ref => ref.id),
+        sceneRefId: selectedScene?.id || ""
+      };
+    }
+
+    async function generateStoryboard() {
+      setBusy(`正在调用 ${textModelLabel()} 生成分镜规划...`);
+      state.lastApiError = "";
+      if (shouldUseRealApi()) {
+        try {
+          const referenceSummary = state.references.map((r, index) => `参考图${index + 1}=${r.roleName || r.name}（${r.type}，${r.name}）`).join("；") || "暂无参考图";
+          const content = await callTextModel([
+            "请根据漫画剧情描述，分成分镜图（一个漫画格为一个分镜）。",
+            "只输出 JSON 数组，不要 Markdown。数组元素字段固定为：scene, action, camera, text, characterNames, sceneRefName。",
+            "每个分镜都必须有主角台词，text 字段只能写主角说出口的对白，不要写旁白，不要写空字符串。",
+            "每句主角台词要短、具体、适合放进漫画对白气泡里。",
+            "每个分镜要包含画面内容、人物动作/表情、镜头语言、主角台词。",
+            `分镜数量必须严格等于漫画总格数 N：${Number(state.totalComicPanels) || 12}。`,
+            "characterNames 必须是本分镜出场角色名数组，名称必须来自参考图绑定里的角色名/身份或别名，例如 [\"男主\", \"女主\"]。",
+            "sceneRefName 必须写本分镜使用的场景参考图名称，例如 \"夜晚教室\"；如果没有场景图则写空字符串。",
+            "如果某个角色在分镜中出场，scene 或 action 字段也要写出该角色名/身份，例如男主、女主，便于后续校验绑定。",
+            "",
+            `漫画剧情描述：${state.optimizedStory || state.story}`,
+            "",
+            "一致性要求：以参考图绑定、角色名和场景名为准。",
+            `参考图绑定：${referenceSummary}`
+          ].join("\n"));
+          const parsed = parseStoryboardJson(content);
+          if (!parsed || !parsed.length) throw new Error(`${textModelLabel()} 返回内容无法解析为分镜 JSON。`);
+          state.storyboard = parsed;
+          state.storyboardApproved = false;
+          addRecordLog(`${textModelLabel()} 已生成分镜规划，等待用户审核`);
+          saveDraft(false);
+          clearBusy();
+          return;
+        } catch (error) {
+          addRecordLog(`分镜 API 调用失败：${error.message}`);
+          state.lastApiError = `分镜 API 调用失败：${error.message}`;
+          if (!API_CONFIG.fallbackToMock) {
+            alert(state.lastApiError);
+            clearBusy();
+            return;
+          }
+        }
+      }
+      const base = state.optimizedStory || state.story;
+      state.storyboard = [
+        {
+          scene: "夜晚教室全景，台灯照亮课桌和作业本，窗外偏冷色。",
+          action: "男学生伏案写作业，神情疲惫又紧张。",
+          camera: "中远景 / 轻微俯视",
+          text: "怎么只剩我一个人了……"
+        },
+        {
+          scene: "作业本近景，紫色光芒从字迹间渗出。",
+          action: "男学生的手停在半空，睁大眼睛。",
+          camera: "特写",
+          text: "这是什么？"
+        },
+        {
+          scene: "窗边出现星空裂隙和紫色能量环。",
+          action: "幻想女角色从光环中缓缓现身，皇冠和礼服保持清晰。",
+          camera: "低机位中景",
+          text: "你是谁？为什么会在这里？"
+        },
+        {
+          scene: "两人隔着发光作业本对视，教室与星空光效叠加。",
+          action: "男学生后退半步，女角色伸手指向作业本。",
+          camera: "双人构图",
+          text: "如果这是真的，我该怎么帮你？"
+        }
+      ].map(item => bindPanelReferences(item));
+      if (base.length < 20) state.storyboard[0].scene = "根据当前剧情生成主场景开场。";
+      state.storyboardApproved = false;
+      addRecordLog("已生成分镜规划，等待用户审核");
+      saveDraft(false);
+      clearBusy();
+    }
+
+    function addStoryboardItem() {
+      state.storyboard.push({
+        scene: "新增画面内容",
+        action: "新增人物动作 / 表情",
+        camera: "中景",
+        text: "主角台词",
+        characterIds: [],
+        sceneRefId: ""
+      });
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function removeStoryboardItem(index) {
+      state.storyboard.splice(index, 1);
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function moveStoryboard(index, delta) {
+      const target = index + delta;
+      if (target < 0 || target >= state.storyboard.length) return;
+      const [item] = state.storyboard.splice(index, 1);
+      state.storyboard.splice(target, 0, item);
+      invalidateGeneratedPrompts();
+      saveDraft(false);
+    }
+
+    function approveStoryboard() {
+      state.storyboard = state.storyboard.map(item => {
+        if ((item.characterIds || []).length || item.sceneRefId) return item;
+        return bindPanelReferences(item);
+      });
+      state.storyboardApproved = true;
+      addRecordLog("分镜规划审核通过");
+      currentStep = "generate";
+      saveDraft(false);
+    }
+
+    function buildCharacterLockBlock(ref, referenceNumber = "") {
+      const role = ref.roleName || ref.name || "未命名角色";
+      return [
+        `【人物一致性锁定块：${role}】`,
+        referenceNumber ? `对应传入图片：image[${Number(referenceNumber) - 1}]` : "",
+        `角色名/身份：${role}`,
+        ref.aliases ? `剧情别名：${ref.aliases}` : "",
+        "必须严格参考该角色图的人脸结构、发型轮廓、发色、眼睛特征、服装主体、配饰和整体气质。",
+        ref.mustKeep ? `必须保留：${ref.mustKeep}` : "",
+        ref.forbidden ? `禁止变化：${ref.forbidden}` : "",
+        "禁止把其他角色的五官、发型、服装或配饰混到此角色身上；禁止随分镜换脸、换发色、换服装。",
+        ref.lockNote ? `用户补充锁定：${ref.lockNote}` : "用户补充锁定：无，默认以参考图为最高优先级。"
+      ].filter(Boolean).join("\n");
+    }
+
+    function buildSceneLockBlock(ref, referenceNumber = "") {
+      const scene = ref.roleName || ref.name || "未命名场景";
+      return [
+        `【场景一致性锁定块：${scene}】`,
+        referenceNumber ? `对应传入图片：image[${Number(referenceNumber) - 1}]` : "",
+        `场景名：${scene}`,
+        ref.aliases ? `场景别名：${ref.aliases}` : "",
+        "必须严格参考该场景图的空间结构、主要道具、色调、光线方向和环境氛围。",
+        ref.mustKeep ? `固定元素：${ref.mustKeep}` : "",
+        ref.forbidden ? `禁止变化：${ref.forbidden}` : "",
+        "禁止把无关场景元素混入；连续剧情中固定道具和空间关系应保持稳定。",
+        ref.lockNote ? `用户补充锁定：${ref.lockNote}` : "用户补充锁定：无，默认以参考图为最高优先级。"
+      ].filter(Boolean).join("\n");
+    }
+
+    function buildReferenceBindingBlock(selectedReferences = []) {
+      if (!selectedReferences.length) return "【参考图绑定】\n本次未传入参考图。";
+      const lines = selectedReferences.map((ref, index) => {
+        const label = ref.roleName || ref.name;
+        return `参考图${index + 1}：${label}（对应 ${referenceSlotName(index)}，${ref.type}，文件：${ref.name}）。只用于${ref.type === "角色图" ? `${label}的外貌、服装、配饰和气质` : `${label}的空间结构、道具、光线和色调`}。`;
+      });
+      return [
+        "【参考图绑定，必须严格遵守】",
+        `以下图片会按顺序作为 ${imageModelLabel()} 请求体参考图数组传入：`,
+        ...lines,
+        "禁止混淆参考图数组身份；禁止把不同参考图的五官、发型、服装、配饰互相混合；禁止新增未绑定参考图的人物。"
+      ].join("\n");
+    }
+
+    function buildConsistencyBlock(selectedReferences = state.references) {
+      const characters = selectedReferences.filter(r => r.type === "角色图");
+      const scenes = selectedReferences.filter(r => r.type === "场景图");
+      return [
+        "【人物一致性】",
+        characters.length
+          ? characters.map((ref, index) => buildCharacterLockBlock(ref, index + 1)).join("\n\n")
+          : "本次未传入角色参考图。",
+        "",
+        "【场景一致性】",
+        scenes.length
+          ? scenes.map((ref, index) => buildSceneLockBlock(ref, characters.length + index + 1)).join("\n\n")
+          : "本次未传入场景参考图。",
+      ].join("\n");
+    }
+
+    function formatStoryboardPanels(panels, startIndex = 0) {
+      return panels.map((item, index) => {
+        const dialogue = item.text && item.text.trim() ? item.text.trim() : "请根据剧情补充一句主角台词";
+        return `分镜${startIndex + index + 1}：${item.scene}；动作：${item.action}；镜头：${item.camera}；必须出现的主角台词：${dialogue}`;
+      }).join("\n");
+    }
+
+    function formatIllustrationSource(panels = []) {
+      const source = panels.length ? panels : state.storyboard;
+      return source.map((item, index) => (
+        `画面来源${index + 1}：${item.scene || ""}；人物状态：${item.action || ""}；镜头参考：${item.camera || "自由构图"}`
+      )).join("\n") || (state.optimizedStory || state.story);
+    }
+
+    function illustrationVariantDirective(index = 1) {
+      const variants = [
+        "半身角色插画，人物正面或三分之二侧身，表情细腻，背景氛围柔和。",
+        "全身角色立绘，姿态舒展，服装和配饰完整可见，背景空间简洁但有层次。",
+        "动态姿态插画，人物有明确动作，衣摆、头发和光效形成动势，构图更有冲击力。",
+        "近景情绪特写，重点表现眼神、表情和面部细节，背景虚化成氛围色块。",
+        "环境叙事插画，角色处在场景中，利用光线、前景和远景表现空间感。",
+        "低机位或仰视构图，强化角色气场和戏剧感，画面更有张力。",
+        "俯视或斜角构图，突出角色与场景关系，营造新鲜视角。",
+        "背影或回眸构图，强调氛围、服装轮廓和故事悬念。"
+      ];
+      return variants[(Math.max(1, Number(index) || 1) - 1) % variants.length];
+    }
+
+    function buildPromptPreview(panels = state.storyboard, options = {}) {
+      const startIndex = options.startIndex || 0;
+      const pageIndex = options.pageIndex || 1;
+      const pageCount = options.pageCount || Number(state.generateCount) || 1;
+      const selectedReferences = options.selectedReferences || selectReferencesForPanels(panels);
+      const comicStyleBlock = state.outputMode === "comic"
+        ? [
+            "【剧情图漫画风格要求】",
+            "生成一张竖版完整漫画页，不是单张普通插画，也不是写实照片。",
+            `这是第 ${pageIndex}/${pageCount} 张剧情图。本张图只表现下方列出的 ${panels.length} 个分镜，不要把其他分镜或后续剧情画进来。`,
+            "版式必须有动态漫画感，不能太方方正正，不能做成平均网格或等分切割。",
+            "分镜格大小要有主次变化：可使用大开场格、斜切分格、梯形/不规则边框、跨格人物、局部特写小格、气泡跨格、前景遮挡和动势线。",
+            "整体布局参考动态国漫/日漫页面：上方可用宽幅环境格，中段用倾斜双格推进对白，下方用大特写或局部动作格强化情绪。",
+            "分镜之间要有清楚的剧情推进，阅读顺序必须清晰，但边框和构图要有节奏感与视觉冲击。",
+            "每一个分镜都必须有主角对白气泡，不要旁白框，台词内容以本提示词列出的主角台词为准。",
+            "画风要求：精致日漫/国漫校园漫画风，干净线稿，柔和上色，细腻表情，明亮但有层次的场景光影。",
+            "文字区域留白明确，气泡不要遮挡人物脸部。",
+            "人物必须严格参考上传的角色图，保持发型、发色、脸型、服装、配饰和气质一致。",
+            "场景必须参考上传的场景图，保持空间结构、固定道具、光线方向和色调一致。"
+          ].join("\n")
+        : [
+            "【纯图风格要求】",
+            "生成单张完整角色插画，不做多格漫画排版，不切分镜。",
+            "纯图画面只允许出现 1 个主要人物，这个人物必须来自唯一传入的人物参考图；不要出现第二个人物、群像、路人、背景人物或未上传角色。",
+            "纯图每次最多只传 1 张角色参考图和 1 张场景参考图；场景图只作为背景结构、光线和氛围参考，不新增人物。",
+            "纯图中不能出现对白、台词、文字、旁白、对话气泡或漫画格边框。",
+            `这是第 ${pageIndex}/${pageCount} 张纯图，需要与其他纯图形成不同构图 / 姿态 / 氛围版本。`,
+            `本张纯图变化方向：${illustrationVariantDirective(pageIndex)}`,
+            "人物必须严格参考上传的角色图，保持发型、发色、脸型、服装、配饰和气质一致。",
+            "场景或背景参考上传的场景图，保持视觉基调一致。",
+            "画风要求：精致日漫/国漫插画风，画面完整，构图明确，光影细腻。"
+          ].join("\n");
+      return [
+        `生图模式：${state.outputMode === "comic" ? "剧情图" : "纯图"}`,
+        `生成数量：${state.generateCount}`,
+        `画面比例：${state.aspectRatio}`,
+        `生图质量等级：${state.imageQuality || API_CONFIG.imageQuality}`,
+        `文字模型：${textModelLabel()}`,
+        `生图模型：${imageModelLabel()}`,
+        "",
+        "【语言要求】",
+        `最终传给 ${imageModelLabel()} 的 prompt 必须固定为中文。除 image[0] / image_urls[0] 这类必要数组标识、API 模型名、文件名外，不要输出英文句子或英文描述。`,
+        "",
+        comicStyleBlock,
+        "",
+        buildReferenceBindingBlock(selectedReferences),
+        "",
+        buildConsistencyBlock(selectedReferences),
+        "",
+        "【优化剧情】",
+        state.optimizedStory || state.story,
+        "",
+        state.outputMode === "comic" ? "【本张图仅使用的分镜】" : "【画面规划】",
+        state.outputMode === "comic" ? formatStoryboardPanels(panels, startIndex) : [
+          formatIllustrationSource(panels),
+          "",
+          `【本张纯图变化方向】${illustrationVariantDirective(pageIndex)}`,
+          "画面只允许出现 1 个主要人物，禁止出现第二个人物、群像、路人、背景人物或未上传角色。",
+          "禁止出现任何对白、台词、文字、旁白、对话气泡、漫画分格或多格排版。"
+        ].join("\n")
+      ].join("\n");
+    }
+
+    async function generateImagePromptWithDeepSeek({ basePrompt, panels, selectedReferences, startIndex, pageIndex, pageCount }) {
+      const panelCount = panels.length;
+      const referenceBinding = buildReferenceBindingBlock(selectedReferences);
+      if (state.outputMode !== "comic") {
+        const content = await callTextModel([
+          "请依据用户提供的剧情、画面来源、人物参考图和场景参考图，为每一张纯图生成对应的图片生成提示词。",
+          "",
+          `图片总数量：${pageCount}`,
+          `当前图片编号：${pageIndex}`,
+          "生图模式：纯图",
+          `画面比例：${state.aspectRatio}`,
+          `生图质量要求：${state.imageQuality || API_CONFIG.imageQuality}`,
+          `生图模型：${imageModelLabel()}`,
+          `参考图请求字段：${imageModelConfig().provider === "grsai" ? "image_urls" : "image"}`,
+          "",
+          "每条提示词必须生成单张完整插画，不是漫画页，不包含分镜格，不做多格排版。",
+          "画面中只能出现 1 个主要人物，必须绑定到唯一的人物参考图；禁止出现第二个人、群像、路人、背景人物或未上传角色。",
+          "如果传入场景参考图，仅用于背景空间结构、光线、色调和氛围，不要从场景图中新增人物。",
+          "纯图每次最多只使用 1 张角色参考图和 1 张场景参考图；请在提示词中按实际传入顺序写清楚参考图对应关系。",
+          "每张纯图都要有不同构图 / 姿态 / 氛围版本，不能生成重复画面。",
+          `本张纯图变化方向：${illustrationVariantDirective(pageIndex)}`,
+          "纯图里绝对不要出现对白、台词、文字、旁白、拟声词、对话气泡、漫画框线或任何字幕。",
+          "提示词需要完整描述主体角色、姿态动作、表情、构图、镜头、光线、氛围、背景和画面完整度。",
+          "同时，必须在提示词中显式指定所使用的人物参考图和场景参考图，引用格式统一为：“参考图1：xxx，参考图2：xxx，参考图3：xxx”（可根据实际数量增减）。",
+          "仅输出生成的提示词，不附加任何解释说明。",
+          `最终提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
+          "",
+          referenceBinding,
+          "",
+          "【剧情与画面来源】",
+          state.optimizedStory || state.story,
+          "",
+          formatIllustrationSource(panels),
+          "",
+          "【基础提示词资料】",
+          basePrompt
+        ].join("\n"));
+        const trimmed = (content || "").trim();
+        if (!trimmed) throw new Error(`${textModelLabel()} 未返回纯图生图提示词。`);
+        return trimmed;
+      }
+      const content = await callTextModel([
+        "请依据用户提供的分镜脚本及以下输入参数，为每一张图片生成对应的图片生成提示词：",
+        "",
+        `图片总数量：${pageCount}`,
+        `单张图片所含分镜格数：${panelCount}`,
+        `生图模式：${state.outputMode === "comic" ? "剧情图" : "纯图"}`,
+        `画面比例：${state.aspectRatio}`,
+        `生图质量要求：${state.imageQuality || API_CONFIG.imageQuality}`,
+        `生图模型：${imageModelLabel()}`,
+        `参考图请求字段：${imageModelConfig().provider === "grsai" ? "image_urls" : "image"}`,
+        "",
+        "每条提示词须完整描述该图片内所有分镜格的画面，包含：整体构图布局、各格中的人物动作与表情、对应的台词（可融入画面描述中）。",
+        "图片版面不能太方方正正，不能是平均网格或等分切割；必须具有动态漫画版式感。",
+        "请在提示词中明确要求：分镜格大小有主次变化，可使用斜切分格、梯形或不规则边框、跨格人物、大开场格、局部特写小格、气泡跨格、前景遮挡和动势线；整体阅读顺序清晰但构图有节奏感。",
+        "同时，必须在提示词中显式指定所使用的人物参考图和场景参考图，引用格式统一为：“参考图1：xxx，参考图2：xxx，参考图3：xxx”（可根据实际数量增减）。",
+        "仅输出生成的提示词，不附加任何解释说明。",
+        `最终提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
+        "",
+        `当前生成第 ${pageIndex}/${pageCount} 张图片，只能表现分镜 ${startIndex + 1}-${startIndex + panelCount}，不要加入其他分镜或后续剧情。`,
+        "",
+        referenceBinding,
+        "",
+        "【本张图分镜】",
+        formatStoryboardPanels(panels, startIndex),
+        "",
+        "【基础提示词资料】",
+        basePrompt
+      ].join("\n"));
+      const trimmed = (content || "").trim();
+      if (!trimmed) throw new Error(`${textModelLabel()} 未返回生图提示词。`);
+      return trimmed;
+    }
+
+    async function generatePrompts() {
+      if (!state.storyboardApproved) return;
+      setBusy("正在生成每张图的生图提示词...");
+      state.lastApiError = "";
+      const count = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : state.storyboard.length;
+      const createdAt = new Date().toLocaleString();
+      const prompts = [];
+      for (let index = 0; index < count; index += 1) {
+        const start = state.outputMode === "comic" ? index * panelsPerImage : 0;
+        const panelsForThisImage = state.outputMode === "comic"
+          ? state.storyboard.slice(start, start + panelsPerImage)
+          : state.storyboard;
+        if (!panelsForThisImage.length) {
+          addRecordLog(`第 ${index + 1} 张没有可用分镜，已停止生成`);
+          break;
+        }
+        const selectedReferences = selectReferencesForPanels(panelsForThisImage);
+        const prompt = buildPromptPreview(panelsForThisImage, {
+          startIndex: start,
+          pageIndex: index + 1,
+          pageCount: count,
+          selectedReferences
+        });
+        let itemPrompt = [
+          prompt,
+          "",
+          `本次生成第 ${index + 1} 张。`,
+          `本次实际传给 ${imageModelLabel()} 的参考图数组：${selectedReferences.map((ref, refIndex) => `${referenceSlotName(refIndex)}=${ref.roleName || ref.name}`).join("；") || "无"}`,
+          "语言要求：最终 prompt 固定使用中文，除 image[n] 等必要标识外不要使用英文描述。",
+          state.outputMode === "comic"
+            ? `输出为剧情图：本张只画分镜 ${start + 1}-${start + panelsForThisImage.length}，不要画其他分镜。必须是一张包含 ${panelsForThisImage.length} 个分镜的三段式漫画页，每个分镜都有主角对白气泡，不要旁白框。`
+            : `输出为纯图：单张完整插画，不切分镜，不做漫画排版；画面只允许出现 1 个主要人物，只使用 1 张角色参考图和 1 张场景参考图；本张变化方向：${illustrationVariantDirective(index + 1)}；禁止出现第二个人物、群像、路人、背景人物、对白、台词、文字、旁白、对话气泡和漫画格。`
+        ].join("\n");
+        if (shouldUseRealApi()) {
+          try {
+            busyText = `正在调用 ${textModelLabel()} 生成第 ${index + 1}/${count} 张专属生图提示词...`;
+            render();
+            itemPrompt = await generateImagePromptWithDeepSeek({
+              basePrompt: prompt,
+              panels: panelsForThisImage,
+              selectedReferences,
+              startIndex: start,
+              pageIndex: index + 1,
+              pageCount: count
+            });
+            addRecordLog(`${textModelLabel()} 已生成第 ${index + 1} 张生图提示词`);
+          } catch (error) {
+            addRecordLog(`${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`);
+            state.lastApiError = `${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`;
+            if (!API_CONFIG.fallbackToMock) {
+              alert(state.lastApiError);
+              clearBusy();
+              return;
+            }
+          }
+        }
+        prompts.push({
+          id: uid("prompt"),
+          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1} 提示词`,
+          mode: state.outputMode,
+          prompt: itemPrompt,
+          referenceIds: selectedReferences.map(ref => ref.id),
+          startIndex: start,
+          panelCount: panelsForThisImage.length,
+          createdAt,
+        });
+      }
+      state.imagePrompts = prompts;
+      state.results = [];
+      addRecordLog(`已生成 ${prompts.length} 条生图提示词，等待用户审核生成`);
+      currentStep = "prompts";
+      saveDraft(false);
+      clearBusy();
+    }
+
+    function updatePromptText(index, value) {
+      if (!state.imagePrompts[index]) return;
+      state.imagePrompts[index].prompt = value;
+      saveDraft(false);
+    }
+
+    function copyPrompt(index) {
+      const prompt = state.imagePrompts[index]?.prompt || "";
+      if (!prompt) return;
+      navigator.clipboard?.writeText(prompt);
+      addRecordLog(`已复制第 ${index + 1} 条提示词`);
+      saveDraft(false);
+    }
+
+    async function optimizeGeneratedPrompts() {
+      if (!state.imagePrompts.length) return;
+      const requirement = (state.promptOptimization || "").trim();
+      if (!requirement) {
+        alert("请先填写提示词优化要求。");
+        return;
+      }
+      setBusy(`正在调用 ${textModelLabel()} 优化提示词...`);
+      state.lastApiError = "";
+      for (let index = 0; index < state.imagePrompts.length; index += 1) {
+        const item = state.imagePrompts[index];
+        if (shouldUseRealApi()) {
+          try {
+            busyText = `正在优化第 ${index + 1}/${state.imagePrompts.length} 条提示词...`;
+            render();
+            item.prompt = await callTextModel([
+              `请根据用户优化要求，优化下面这份 ${imageModelLabel()} 生图提示词。`,
+              "只输出优化后的最终提示词正文，不要 Markdown，不要解释。",
+              `优化后的提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
+              "必须原样保留原提示词中的【参考图绑定，必须严格遵守】段落，尤其是参考图数组下标与身份说明。",
+              "必须保留人物一致性锁定、场景一致性锁定、分镜数量、分镜顺序和对白内容。",
+              "不要新增额外分镜，不要新增未上传参考图中的人物。",
+              "",
+              `用户优化要求：${requirement}`,
+              "",
+              "【原提示词】",
+              item.prompt
+            ].join("\n"));
+          } catch (error) {
+            addRecordLog(`第 ${index + 1} 条提示词优化失败：${error.message}`);
+            state.lastApiError = `第 ${index + 1} 条提示词优化失败：${error.message}`;
+            if (!API_CONFIG.fallbackToMock) {
+              alert(state.lastApiError);
+              clearBusy();
+              return;
+            }
+          }
+        } else {
+          item.prompt = `${item.prompt}\n\n【用户优化要求】\n${requirement}`;
+        }
+      }
+      addRecordLog("提示词已根据优化要求更新");
+      saveDraft(false);
+      clearBusy();
+    }
+
+    async function generateImagesFromPrompts() {
+      if (!state.imagePrompts.length) return;
+      setBusy(`正在调用 ${imageModelLabel()} 生成图片...`);
+      state.lastApiError = "";
+      const createdAt = new Date().toLocaleString();
+      const results = [];
+      for (let index = 0; index < state.imagePrompts.length; index += 1) {
+        const item = state.imagePrompts[index];
+        const selectedReferences = (item.referenceIds || [])
+          .map(id => state.references.find(ref => ref.id === id))
+          .filter(Boolean);
+        const referenceImages = getReferenceImagesForApi(selectedReferences);
+        let url = "";
+        if (shouldUseRealApi()) {
+          try {
+            busyText = `正在调用 ${imageModelLabel()} 生成第 ${index + 1}/${state.imagePrompts.length} 张...`;
+            render();
+            addRecordLog(`第 ${index + 1} 张使用 ${selectedImageInterfaceName(referenceImages.length)}，传入参考图 ${referenceImages.length} 张`);
+            url = await callImageModel(item.prompt, referenceImages);
+          } catch (error) {
+            addRecordLog(`${imageModelLabel()} 第 ${index + 1} 张调用失败：${error.message}`);
+            state.lastApiError = `${imageModelLabel()} 第 ${index + 1} 张调用失败：${error.message}`;
+            if (!API_CONFIG.fallbackToMock) {
+              alert(state.lastApiError);
+              clearBusy();
+              return;
+            }
+          }
+        }
+        if (!url) url = imagePlaceholder(state.outputMode === "comic" ? `剧情图 ${index + 1}` : `纯图 ${index + 1}`, index);
+        results.push({
+          id: uid("img"),
+          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1}`,
+          mode: state.outputMode,
+          url,
+          prompt: item.prompt,
+          createdAt,
+          best: false
+        });
+      }
+      state.results = results;
+      state.records = [...state.results, ...(state.records || [])].slice(0, 60);
+      addRecordLog(`已生成 ${results.length} 张${state.outputMode === "comic" ? "剧情图" : "纯图"}`);
+      currentStep = "preview";
+      saveDraft(false);
+      clearBusy();
+    }
+
+    function markBest(id) {
+      state.results = state.results.map(item => ({ ...item, best: item.id === id ? !item.best : item.best }));
+      state.records = state.records.map(item => item.id === id ? { ...item, best: !item.best } : item);
+      saveDraft(false);
+    }
+
+    function clearRecords() {
+      state.records = [];
+      addRecordLog("已清空历史生成记录");
+      saveDraft(false);
+    }
+
+    function downloadProject() {
+      downloadBlob("AI漫画角色生图项目.json", JSON.stringify(state, null, 2), "application/json");
+    }
+
+    function downloadBlob(filename, content, type) {
+      const blob = new Blob([content], { type: `${type};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    restoreReferenceImages()
+      .catch(error => console.warn("参考图恢复失败", error))
+      .finally(() => render());
+  </script>
+</body>
+</html>
