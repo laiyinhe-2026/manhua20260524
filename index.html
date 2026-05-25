@@ -464,6 +464,7 @@
     <div class="actions">
       <button class="btn" onclick="saveDraft(true)">保存草稿</button>
       <button class="btn" onclick="toggleHistory()">历史记录</button>
+      <button class="btn" onclick="toggleTemplates()">提示词模板</button>
       <button class="btn" onclick="downloadProject()">导出项目 JSON</button>
       <button class="btn" onclick="resetDemo()">恢复演示</button>
     </div>
@@ -474,6 +475,7 @@
     <main class="main" id="main"></main>
   </div>
   <div id="historyModal"></div>
+  <div id="templateModal"></div>
   <div id="imageModal"></div>
 
   <script>
@@ -482,6 +484,132 @@
     const IMAGE_DB_STORE = "referenceImages";
     const BUILTIN_PPIO_API_KEY = "";
     const BUILTIN_GRSAI_API_KEY = "";
+    const PROMPT_TEMPLATE_FILES = {
+      optimizeStory: "/prompts/01-optimize-story.md",
+      generateStoryboard: "/prompts/02-generate-storyboard.md",
+      comicImagePrompt: "/prompts/03-comic-image-prompt.md",
+      illustrationImagePrompt: "/prompts/04-illustration-image-prompt.md",
+      optimizeImagePrompt: "/prompts/05-optimize-image-prompt.md",
+      continuitySummary: "/prompts/06-continuity-summary.md"
+    };
+    const FALLBACK_PROMPT_TEMPLATES = {
+      optimizeStory: [
+        "请根据用户提供的剧情概要、作品设定资料、角色设定和场景参考图，优化成一个适合后续拆分为多格漫画的完整剧情。",
+        "优化后的剧情需要包含明确的起、承、转、合，角色关系清楚，事件推进连贯，情绪变化明确，画面感强。",
+        "必须严格遵守作品设定资料和禁止偏离项，不要擅自改变世界观、人物身份、人物关系、核心剧情大纲和场景时代背景。",
+        "当前阶段只输出优化后的完整剧情文本，不要输出分镜、格数拆分、标题、解释、前言或后记。",
+        "",
+        "【剧情概要】",
+        "{{story}}",
+        "",
+        "【作品设定资料】",
+        "{{projectBible}}",
+        "",
+        "【角色设定与参考图】",
+        "{{roleSummary}}",
+        "",
+        "【场景参考图】",
+        "{{sceneSummary}}",
+        "",
+        "后续计划拆分漫画总格数 N：{{totalComicPanels}}"
+      ].join("\n"),
+      generateStoryboard: [
+        "请根据漫画剧情描述，分成分镜图（一个漫画格为一个分镜）。",
+        "只输出 JSON 数组，不要 Markdown。数组元素字段固定为：scene, action, camera, text, characterNames, sceneRefName。",
+        "每个分镜都必须有主角台词，text 字段只能写角色说出口的对白，不要写旁白，不要写空字符串。",
+        "每句台词要短、具体、适合放进漫画对白气泡里。",
+        "必须严格遵守作品设定资料、参考图绑定和禁止偏离项。",
+        "分镜数量必须严格等于漫画总格数 N：{{totalComicPanels}}。",
+        "characterNames 必须是本分镜出场角色名数组，名称必须来自参考图绑定里的角色名/身份或别名。",
+        "sceneRefName 必须写本分镜使用的场景参考图名称；如果没有场景图则写空字符串。",
+        "",
+        "【优化后的漫画剧情】",
+        "{{optimizedStory}}",
+        "",
+        "【作品设定资料】",
+        "{{projectBible}}",
+        "",
+        "【参考图绑定】",
+        "{{referenceSummary}}"
+      ].join("\n"),
+      comicImagePrompt: [
+        "请依据用户提供的分镜脚本及以下输入参数，为当前漫画页生成图片生成提示词。",
+        "仅输出生成的提示词，不附加任何解释说明。",
+        "当前生成第 {{pageIndex}}/{{pageCount}} 张图片，只能表现分镜 {{panelRange}}，不要加入其他分镜或后续剧情。",
+        "图片必须是一张完整漫画页，每个分镜都有对白气泡，不要旁白框。",
+        "版式必须有动态漫画感，不能太方方正正，不能是平均网格或等分切割。",
+        "必须明确要求人物严格对应参考图，场景严格对应参考图，不得混合五官、服装、发色，不得生成未绑定参考图的新主角。",
+        "上一页参考图只用于连续性，不改变当前页分镜内容。",
+        "最终提示词必须固定为中文。",
+        "",
+        "【作品设定资料】",
+        "{{projectBible}}",
+        "",
+        "{{referenceBinding}}",
+        "",
+        "{{consistencyBlock}}",
+        "",
+        "{{continuityBlock}}",
+        "",
+        "【本页分镜】",
+        "{{storyboardPanels}}",
+        "",
+        "【基础提示词资料】",
+        "{{basePrompt}}"
+      ].join("\n"),
+      illustrationImagePrompt: [
+        "请依据用户提供的剧情、画面来源、人物参考图和场景参考图，为当前纯图生成图片生成提示词。",
+        "仅输出生成的提示词，不附加任何解释说明。",
+        "生成单张完整插画，不是漫画页，不包含分镜格，不做多格排版。",
+        "纯图可单人、双人或多人同框；如果多人出现，必须写清站位、互动、战斗动作、前后景关系和每个角色对应的参考图。",
+        "纯图里绝对不要出现对白、台词、文字、旁白、拟声词、对话气泡、漫画框线或任何字幕。",
+        "最终提示词必须固定为中文。",
+        "",
+        "【作品设定资料】",
+        "{{projectBible}}",
+        "",
+        "{{referenceBinding}}",
+        "",
+        "{{consistencyBlock}}",
+        "",
+        "【画面来源】",
+        "{{illustrationSource}}",
+        "",
+        "【本张纯图变化方向】",
+        "{{illustrationVariant}}",
+        "",
+        "【基础提示词资料】",
+        "{{basePrompt}}"
+      ].join("\n"),
+      optimizeImagePrompt: [
+        "请根据用户优化要求，优化下面这份 {{imageModelLabel}} 生图提示词。",
+        "只输出优化后的最终提示词正文，不要 Markdown，不要解释。",
+        "必须原样保留原提示词中的【参考图绑定，必须严格遵守】段落，尤其是参考图数组下标与身份说明。",
+        "必须保留人物一致性锁定、场景一致性锁定、分镜数量、分镜顺序和对白或无对白规则。",
+        "必须遵守作品设定资料，不要新增额外分镜，不要新增未上传参考图中的人物。",
+        "最终提示词必须固定为中文。",
+        "",
+        "【作品设定资料】",
+        "{{projectBible}}",
+        "",
+        "【用户优化要求】",
+        "{{requirement}}",
+        "",
+        "【原提示词】",
+        "{{originalPrompt}}"
+      ].join("\n"),
+      continuitySummary: [
+        "请根据本页漫画分镜和最终生图提示词，生成供下一页延续使用的连续性摘要。",
+        "只输出简洁中文摘要，不要 Markdown。",
+        "必须包含：本页剧情进展、角色当前状态、场景时间、天气/光线、固定背景、关键道具、最后一个动作、下一页应延续内容。",
+        "",
+        "【本页分镜】",
+        "{{storyboardPanels}}",
+        "",
+        "【本页提示词】",
+        "{{prompt}}"
+      ].join("\n")
+    };
     const TEXT_MODEL_OPTIONS = {
       "ppio-deepseek-v4-flash": {
         label: "DeepSeek V4 Flash（PPIO）",
@@ -548,6 +676,8 @@
     let busyText = "";
     let historyOpen = false;
     let imagePreview = null;
+    let promptTemplates = { ...FALLBACK_PROMPT_TEMPLATES };
+    let templatesOpen = false;
 
     const $ = (id) => document.getElementById(id);
     const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -581,6 +711,14 @@
       return {
         story: "深夜教室里，容易紧张的男学生发现作业本上出现紫色光芒。一位来自星空裂隙的神秘女角色现身，要求他帮忙找回遗失的王冠碎片。",
         requirements: "",
+        projectBible: {
+          world: "",
+          characters: "",
+          relationships: "",
+          outline: "",
+          style: "",
+          forbidden: ""
+        },
         references: [],
         optimizedStory: "",
         storyApproved: false,
@@ -611,6 +749,22 @@
     state.promptOptimization = state.promptOptimization || "";
     state.logs = state.logs || [];
     state.lastApiError = state.lastApiError || "";
+    state.projectBible = {
+      world: "",
+      characters: "",
+      relationships: "",
+      outline: "",
+      style: "",
+      forbidden: "",
+      ...(state.projectBible || {})
+    };
+    state.imagePrompts = (state.imagePrompts || []).map(item => ({
+      status: "idle",
+      errorMessage: "",
+      continuitySummary: "",
+      ...item
+    }));
+    state.results = state.results || [];
     state.panelsPerComicImage = state.panelsPerComicImage || 4;
     state.totalComicPanels = state.totalComicPanels || Math.max(4, Number(state.generateCount || 3) * Number(state.panelsPerComicImage || 4));
     state.imageQuality = state.imageQuality || API_CONFIG.imageQuality || "medium";
@@ -784,6 +938,18 @@
       }
     }
 
+    function toggleTemplates() {
+      templatesOpen = !templatesOpen;
+      render();
+    }
+
+    function closeTemplates(event) {
+      if (event.target.classList.contains("modal-backdrop")) {
+        templatesOpen = false;
+        render();
+      }
+    }
+
     function stepStatus(step) {
       if (step === "input") return state.story && state.references.length ? "已填写" : "未完成";
       if (step === "story") return state.storyApproved ? "已通过" : state.optimizedStory ? "待审核" : "未生成";
@@ -810,6 +976,7 @@
       `).join("");
       $("main").innerHTML = renderMain();
       $("historyModal").innerHTML = historyOpen ? renderRecordsModal() : "";
+      $("templateModal").innerHTML = templatesOpen ? renderTemplatesModal() : "";
       $("imageModal").innerHTML = imagePreview ? renderImageModal() : "";
     }
 
@@ -821,6 +988,46 @@
       if (currentStep === "generate") return busy + apiErrorHtml() + renderGenerateStep();
       if (currentStep === "prompts") return busy + apiErrorHtml() + renderPromptReviewStep();
       return busy + apiErrorHtml() + renderPreviewStep();
+    }
+
+    function renderPromptTemplate(templateName, values = {}) {
+      const template = promptTemplates[templateName] || FALLBACK_PROMPT_TEMPLATES[templateName] || "";
+      return template.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
+    }
+
+    async function loadPromptTemplates() {
+      const loaded = {};
+      await Promise.all(Object.entries(PROMPT_TEMPLATE_FILES).map(async ([key, path]) => {
+        try {
+          const response = await fetch(path);
+          if (!response.ok) throw new Error(`${response.status}`);
+          loaded[key] = await response.text();
+        } catch (error) {
+          loaded[key] = FALLBACK_PROMPT_TEMPLATES[key];
+          console.warn(`提示词模板加载失败，使用内置兜底：${path}`, error);
+        }
+      }));
+      promptTemplates = { ...FALLBACK_PROMPT_TEMPLATES, ...loaded };
+    }
+
+    function projectBibleText() {
+      const bible = state.projectBible || {};
+      return [
+        `世界观设定：${bible.world || "未填写"}`,
+        `主要人物介绍：${bible.characters || "未填写"}`,
+        `人物关系：${bible.relationships || "未填写"}`,
+        `剧情大纲：${bible.outline || "未填写"}`,
+        `场景/时代/美术风格：${bible.style || "未填写"}`,
+        `禁止偏离项：${bible.forbidden || "未填写"}`
+      ].join("\n");
+    }
+
+    function setProjectBibleField(field, value) {
+      state.projectBible = { ...(state.projectBible || {}), [field]: value };
+      state.storyApproved = false;
+      state.storyboardApproved = false;
+      invalidateGeneratedPrompts();
+      saveDraft(false);
     }
 
     function renderModelSelectors({ includeImage = true } = {}) {
@@ -875,6 +1082,22 @@
             </label>
           </div>
           ${renderModelSelectors({ includeImage: false })}
+        </div>
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h2>作品设定资料</h2>
+              <p class="muted">这些资料会进入剧情优化、分镜、提示词生成和提示词优化，帮助模型不要偏离原设定。</p>
+            </div>
+          </div>
+          <div class="grid-2">
+            <label><span>世界观设定</span><textarea onchange="setProjectBibleField('world', this.value)">${esc(state.projectBible.world || "")}</textarea></label>
+            <label><span>主要人物介绍</span><textarea onchange="setProjectBibleField('characters', this.value)">${esc(state.projectBible.characters || "")}</textarea></label>
+            <label><span>人物关系</span><textarea onchange="setProjectBibleField('relationships', this.value)">${esc(state.projectBible.relationships || "")}</textarea></label>
+            <label><span>剧情大纲</span><textarea onchange="setProjectBibleField('outline', this.value)">${esc(state.projectBible.outline || "")}</textarea></label>
+            <label><span>场景 / 时代 / 美术风格设定</span><textarea onchange="setProjectBibleField('style', this.value)">${esc(state.projectBible.style || "")}</textarea></label>
+            <label><span>禁止偏离项</span><textarea placeholder="例如：不能改角色身份、不能改时代背景、不能把黄昏海滩改成白天城市" onchange="setProjectBibleField('forbidden', this.value)">${esc(state.projectBible.forbidden || "")}</textarea></label>
+          </div>
         </div>
         <div class="card">
           <div class="toolbar">
@@ -1144,9 +1367,14 @@
           <div class="toolbar">
             <div>
               <h3>${esc(item.title || `提示词-${index + 1}`)}</h3>
-              <p class="muted">分镜 ${item.startIndex + 1}-${item.startIndex + item.panelCount} · ${refs}</p>
+              <p class="muted">分镜 ${item.startIndex + 1}-${item.startIndex + item.panelCount} · 状态：${esc(item.status || "idle")} · ${refs}</p>
+              ${item.errorMessage ? `<p class="status-line" style="background:#fef2f2;color:#b91c1c">${esc(item.errorMessage)}</p>` : ""}
             </div>
-            <button class="btn" onclick="copyPrompt(${index})">复制提示词</button>
+            <div class="actions">
+              <button class="btn" onclick="copyPrompt(${index})">复制提示词</button>
+              <button class="btn" ${isBusy ? "disabled" : ""} onclick="regeneratePrompt(${index})">重新生成本页提示词</button>
+              <button class="btn primary" ${isBusy ? "disabled" : ""} onclick="generateSingleImage(${index})">生成本页图片</button>
+            </div>
           </div>
           <div class="lock-block">
             <b>实际传给 ${esc(imageModelLabel())}</b><br>
@@ -1182,11 +1410,30 @@
     }
 
     function renderResult(result, index) {
+      const promptIndex = (state.imagePrompts || []).findIndex(item => item.id === result.sourcePromptId);
+      if (result.status === "failed") {
+        return `
+          <div class="card result-card">
+            <div class="status-line" style="background:#fef2f2;color:#b91c1c">生成失败：${esc(result.errorMessage || "未知错误")}</div>
+            <h3>${esc(result.title)}</h3>
+            <p class="muted">${result.mode === "comic" ? "剧情图" : "纯图"} · 第 ${result.pageIndex || index + 1} 页</p>
+            <details>
+              <summary>查看本图提示词</summary>
+              <pre>${esc(result.prompt)}</pre>
+            </details>
+            <div class="actions">
+              <button class="btn primary" ${promptIndex >= 0 && !isBusy ? "" : "disabled"} onclick="generateSingleImage(${promptIndex})">重新生成本页</button>
+              <button class="btn" ${promptIndex >= 0 && !isBusy ? "" : "disabled"} onclick="regeneratePrompt(${promptIndex})">重新生成提示词</button>
+            </div>
+          </div>
+        `;
+      }
       return `
         <div class="card result-card">
           <img src="${result.url}" alt="${esc(result.title)}" onclick="openResultPreview(${index})">
           <h3>${esc(result.title)}</h3>
           <p class="muted">${result.mode === "comic" ? "剧情图" : "纯图"} · ${result.createdAt}</p>
+          ${result.continuitySummary ? `<div class="lock-block"><b>连续性摘要</b><br>${esc(result.continuitySummary)}</div>` : ""}
           <details>
             <summary>查看本图提示词</summary>
             <pre>${esc(result.prompt)}</pre>
@@ -1194,6 +1441,7 @@
           <div class="actions">
             <a class="btn" href="${result.url}" download="${result.title}.svg">下载图片</a>
             <button class="btn" onclick="markBest('${result.id}')">${result.best ? "已标记最佳" : "标记最佳"}</button>
+            <button class="btn" ${promptIndex >= 0 && !isBusy ? "" : "disabled"} onclick="generateSingleImage(${promptIndex})">重新生成本页</button>
           </div>
         </div>
       `;
@@ -1223,6 +1471,36 @@
                 </div>
               `).join("") || `<p class="muted">暂无生成记录。</p>`}
             </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTemplatesModal() {
+      const labels = {
+        optimizeStory: "01 优化剧情",
+        generateStoryboard: "02 生成分镜",
+        comicImagePrompt: "03 剧情图提示词",
+        illustrationImagePrompt: "04 纯图提示词",
+        optimizeImagePrompt: "05 优化生图提示词",
+        continuitySummary: "06 连续性摘要"
+      };
+      return `
+        <div class="modal-backdrop" onclick="closeTemplates(event)">
+          <div class="modal-panel" onclick="event.stopPropagation()">
+            <div class="toolbar" style="margin-bottom:10px">
+              <div>
+                <h3>提示词模板</h3>
+                <p class="muted" style="margin:4px 0 0">模板文件位于仓库 prompts/ 目录，修改 Markdown 后刷新页面即可生效。</p>
+              </div>
+              <button class="btn" onclick="toggleTemplates()">关闭</button>
+            </div>
+            ${Object.keys(PROMPT_TEMPLATE_FILES).map(key => `
+              <details class="card">
+                <summary>${labels[key] || key} · ${PROMPT_TEMPLATE_FILES[key]}</summary>
+                <pre>${esc(promptTemplates[key] || "")}</pre>
+              </details>
+            `).join("")}
           </div>
         </div>
       `;
@@ -1545,12 +1823,6 @@
       if (!selectedCharacters.length && characters.length) selectedCharacters = [sortReferencesForPrompt(characters)[0]];
       if (!selectedScenes.length && scenes.length) selectedScenes = [sortReferencesForPrompt(scenes)[0]];
 
-      if (state.outputMode === "illustration") {
-        const primaryCharacter = sortReferencesForPrompt(selectedCharacters)[0] || sortReferencesForPrompt(characters)[0];
-        const primaryScene = sortReferencesForPrompt(selectedScenes)[0] || sortReferencesForPrompt(scenes)[0];
-        return [primaryCharacter, primaryScene].filter(Boolean);
-      }
-
       return sortReferencesForPrompt([...selectedCharacters, ...selectedScenes]);
     }
 
@@ -1659,17 +1931,13 @@
             .filter(r => r.type === "场景图")
             .map((r, index) => `场景${index + 1}：${r.roleName || r.name}，对应场景参考图：${r.name}`)
             .join("；") || "暂无场景参考图";
-          state.optimizedStory = await callTextModel([
-            "请根据用户提供的剧情概要、角色设定（附对应的角色参考图）和场景参考图，优化成一个适合后续拆分为多格漫画的完整剧情。",
-            "优化后的剧情需要包含明确的起、承、转、合，角色关系清楚，事件推进连贯，情绪变化明确，画面感强。",
-            "请保持角色设定、人物关系、场景氛围和参考图所体现的视觉基调一致。",
-            "当前阶段只输出优化后的完整剧情文本，不要输出分镜、格数拆分、标题、解释、前言或后记。",
-            "",
-            `剧情概要：${state.story}`,
-            `角色设定（附对应的角色参考图）：${roleSummary}`,
-            `场景参考图：${sceneSummary}`,
-            `后续计划拆分漫画总格数 N：${Number(state.totalComicPanels) || 12}`
-          ].join("\n"));
+          state.optimizedStory = await callTextModel(renderPromptTemplate("optimizeStory", {
+            story: state.story,
+            projectBible: projectBibleText(),
+            roleSummary,
+            sceneSummary,
+            totalComicPanels: Number(state.totalComicPanels) || 12
+          }));
           state.storyApproved = false;
           addRecordLog(`${textModelLabel()} 已优化剧情，等待用户审核`);
           currentStep = "story";
@@ -1752,22 +2020,12 @@
       if (shouldUseRealApi()) {
         try {
           const referenceSummary = state.references.map((r, index) => `参考图${index + 1}=${r.roleName || r.name}（${r.type}，${r.name}）`).join("；") || "暂无参考图";
-          const content = await callTextModel([
-            "请根据漫画剧情描述，分成分镜图（一个漫画格为一个分镜）。",
-            "只输出 JSON 数组，不要 Markdown。数组元素字段固定为：scene, action, camera, text, characterNames, sceneRefName。",
-            "每个分镜都必须有主角台词，text 字段只能写主角说出口的对白，不要写旁白，不要写空字符串。",
-            "每句主角台词要短、具体、适合放进漫画对白气泡里。",
-            "每个分镜要包含画面内容、人物动作/表情、镜头语言、主角台词。",
-            `分镜数量必须严格等于漫画总格数 N：${Number(state.totalComicPanels) || 12}。`,
-            "characterNames 必须是本分镜出场角色名数组，名称必须来自参考图绑定里的角色名/身份或别名，例如 [\"男主\", \"女主\"]。",
-            "sceneRefName 必须写本分镜使用的场景参考图名称，例如 \"夜晚教室\"；如果没有场景图则写空字符串。",
-            "如果某个角色在分镜中出场，scene 或 action 字段也要写出该角色名/身份，例如男主、女主，便于后续校验绑定。",
-            "",
-            `漫画剧情描述：${state.optimizedStory || state.story}`,
-            "",
-            "一致性要求：以参考图绑定、角色名和场景名为准。",
-            `参考图绑定：${referenceSummary}`
-          ].join("\n"));
+          const content = await callTextModel(renderPromptTemplate("generateStoryboard", {
+            optimizedStory: state.optimizedStory || state.story,
+            projectBible: projectBibleText(),
+            referenceSummary,
+            totalComicPanels: Number(state.totalComicPanels) || 12
+          }));
           const parsed = parseStoryboardJson(content);
           if (!parsed || !parsed.length) throw new Error(`${textModelLabel()} 返回内容无法解析为分镜 JSON。`);
           state.storyboard = parsed;
@@ -1863,12 +2121,16 @@
 
     function buildCharacterLockBlock(ref, referenceNumber = "") {
       const role = ref.roleName || ref.name || "未命名角色";
+      const slot = referenceNumber ? referenceSlotName(Number(referenceNumber) - 1) : "";
       return [
-        `【人物一致性锁定块：${role}】`,
-        referenceNumber ? `对应传入图片：image[${Number(referenceNumber) - 1}]` : "",
+        `【角色锁定卡：${role}】`,
+        slot ? `对应传入参考图：${slot}` : "",
         `角色名/身份：${role}`,
         ref.aliases ? `剧情别名：${ref.aliases}` : "",
-        "必须严格参考该角色图的人脸结构、发型轮廓、发色、眼睛特征、服装主体、配饰和整体气质。",
+        "脸型五官：必须严格参考该角色图的人脸结构、眼睛特征、表情气质和年龄感。",
+        "发型发色：必须保持参考图的发型轮廓、刘海方向、发色和发量。",
+        "服装配饰：必须保持参考图的服装主体、配色、配饰、标志性物件和轮廓。",
+        "体型气质：必须保持参考图的身材比例、角色气场和性格观感。",
         ref.mustKeep ? `必须保留：${ref.mustKeep}` : "",
         ref.forbidden ? `禁止变化：${ref.forbidden}` : "",
         "禁止把其他角色的五官、发型、服装或配饰混到此角色身上；禁止随分镜换脸、换发色、换服装。",
@@ -1878,12 +2140,16 @@
 
     function buildSceneLockBlock(ref, referenceNumber = "") {
       const scene = ref.roleName || ref.name || "未命名场景";
+      const slot = referenceNumber ? referenceSlotName(Number(referenceNumber) - 1) : "";
       return [
-        `【场景一致性锁定块：${scene}】`,
-        referenceNumber ? `对应传入图片：image[${Number(referenceNumber) - 1}]` : "",
+        `【场景锁定卡：${scene}】`,
+        slot ? `对应传入参考图：${slot}` : "",
         `场景名：${scene}`,
         ref.aliases ? `场景别名：${ref.aliases}` : "",
-        "必须严格参考该场景图的空间结构、主要道具、色调、光线方向和环境氛围。",
+        "空间结构：必须严格参考该场景图的空间关系、远近层次、背景位置和主要构成。",
+        "时间/天气/光线：必须保持参考图体现的时间段、天气、光线方向、色温和阴影关系。",
+        "固定道具：必须保留场景里的核心道具、建筑/地形/家具/自然元素。",
+        "色调氛围：必须保持参考图的整体色调、空气感、时代背景和视觉基调。",
         ref.mustKeep ? `固定元素：${ref.mustKeep}` : "",
         ref.forbidden ? `禁止变化：${ref.forbidden}` : "",
         "禁止把无关场景元素混入；连续剧情中固定道具和空间关系应保持稳定。",
@@ -1919,6 +2185,28 @@
           ? scenes.map((ref, index) => buildSceneLockBlock(ref, characters.length + index + 1)).join("\n\n")
           : "本次未传入场景参考图。",
       ].join("\n");
+    }
+
+    function previousPromptForPage(pageIndex = 1) {
+      return pageIndex > 1 ? state.imagePrompts?.[pageIndex - 2] : null;
+    }
+
+    function previousResultForPage(pageIndex = 1) {
+      const previousPrompt = previousPromptForPage(pageIndex);
+      if (!previousPrompt) return null;
+      return (state.results || []).find(result => result.sourcePromptId === previousPrompt.id && result.status === "success") || null;
+    }
+
+    function buildContinuityBlock(pageIndex = 1) {
+      const previousPrompt = previousPromptForPage(pageIndex);
+      const previousResult = previousResultForPage(pageIndex);
+      if (!previousPrompt && !previousResult) return "【上一页连续性】\n这是第一页，无上一页连续性输入。";
+      return [
+        "【上一页连续性】",
+        previousPrompt?.continuitySummary ? `上一页连续性摘要：${previousPrompt.continuitySummary}` : "上一页连续性摘要：暂无，按上一页提示词和分镜延续。",
+        previousResult?.url ? "上一页生成图会作为连续性参考图传入；只用于延续场景、时间、光线、角色状态、服装和关键道具，不改变当前页分镜内容。" : "上一页没有可用生成图，本页仅使用文本连续性。",
+        previousPrompt?.prompt ? `上一页提示词摘要参考：${previousPrompt.prompt.slice(0, 1200)}` : ""
+      ].filter(Boolean).join("\n");
     }
 
     function formatStoryboardPanels(panels, startIndex = 0) {
@@ -1972,8 +2260,8 @@
         : [
             "【纯图风格要求】",
             "生成单张完整角色插画，不做多格漫画排版，不切分镜。",
-            "纯图画面只允许出现 1 个主要人物，这个人物必须来自唯一传入的人物参考图；不要出现第二个人物、群像、路人、背景人物或未上传角色。",
-            "纯图每次最多只传 1 张角色参考图和 1 张场景参考图；场景图只作为背景结构、光线和氛围参考，不新增人物。",
+            "纯图可以是单人、双人或多人同框，人物数量跟随当前画面/分镜涉及角色。",
+            "如果多人同框，必须写清每个角色的站位、动作互动、战斗关系、前后景层次和对应参考图。",
             "纯图中不能出现对白、台词、文字、旁白、对话气泡或漫画格边框。",
             `这是第 ${pageIndex}/${pageCount} 张纯图，需要与其他纯图形成不同构图 / 姿态 / 氛围版本。`,
             `本张纯图变化方向：${illustrationVariantDirective(pageIndex)}`,
@@ -1998,6 +2286,11 @@
         "",
         buildConsistencyBlock(selectedReferences),
         "",
+        "【作品设定资料】",
+        projectBibleText(),
+        "",
+        buildContinuityBlock(pageIndex),
+        "",
         "【优化剧情】",
         state.optimizedStory || state.story,
         "",
@@ -2006,7 +2299,7 @@
           formatIllustrationSource(panels),
           "",
           `【本张纯图变化方向】${illustrationVariantDirective(pageIndex)}`,
-          "画面只允许出现 1 个主要人物，禁止出现第二个人物、群像、路人、背景人物或未上传角色。",
+          "人物数量跟随本画面涉及角色；可以多人同框，但不得新增未绑定参考图的主角。",
           "禁止出现任何对白、台词、文字、旁白、对话气泡、漫画分格或多格排版。"
         ].join("\n")
       ].join("\n");
@@ -2016,74 +2309,100 @@
       const panelCount = panels.length;
       const referenceBinding = buildReferenceBindingBlock(selectedReferences);
       if (state.outputMode !== "comic") {
-        const content = await callTextModel([
-          "请依据用户提供的剧情、画面来源、人物参考图和场景参考图，为每一张纯图生成对应的图片生成提示词。",
-          "",
-          `图片总数量：${pageCount}`,
-          `当前图片编号：${pageIndex}`,
-          "生图模式：纯图",
-          `画面比例：${state.aspectRatio}`,
-          `生图质量要求：${state.imageQuality || API_CONFIG.imageQuality}`,
-          `生图模型：${imageModelLabel()}`,
-          `参考图请求字段：${imageModelConfig().provider === "grsai" ? "image_urls" : "image"}`,
-          "",
-          "每条提示词必须生成单张完整插画，不是漫画页，不包含分镜格，不做多格排版。",
-          "画面中只能出现 1 个主要人物，必须绑定到唯一的人物参考图；禁止出现第二个人、群像、路人、背景人物或未上传角色。",
-          "如果传入场景参考图，仅用于背景空间结构、光线、色调和氛围，不要从场景图中新增人物。",
-          "纯图每次最多只使用 1 张角色参考图和 1 张场景参考图；请在提示词中按实际传入顺序写清楚参考图对应关系。",
-          "每张纯图都要有不同构图 / 姿态 / 氛围版本，不能生成重复画面。",
-          `本张纯图变化方向：${illustrationVariantDirective(pageIndex)}`,
-          "纯图里绝对不要出现对白、台词、文字、旁白、拟声词、对话气泡、漫画框线或任何字幕。",
-          "提示词需要完整描述主体角色、姿态动作、表情、构图、镜头、光线、氛围、背景和画面完整度。",
-          "同时，必须在提示词中显式指定所使用的人物参考图和场景参考图，引用格式统一为：“参考图1：xxx，参考图2：xxx，参考图3：xxx”（可根据实际数量增减）。",
-          "仅输出生成的提示词，不附加任何解释说明。",
-          `最终提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
-          "",
+        const content = await callTextModel(renderPromptTemplate("illustrationImagePrompt", {
+          pageIndex,
+          pageCount,
+          aspectRatio: state.aspectRatio,
+          imageQuality: state.imageQuality || API_CONFIG.imageQuality,
+          imageModelLabel: imageModelLabel(),
+          referenceField: imageModelConfig().provider === "grsai" ? "image_urls" : "image",
+          projectBible: projectBibleText(),
           referenceBinding,
-          "",
-          "【剧情与画面来源】",
-          state.optimizedStory || state.story,
-          "",
-          formatIllustrationSource(panels),
-          "",
-          "【基础提示词资料】",
+          consistencyBlock: buildConsistencyBlock(selectedReferences),
+          illustrationSource: formatIllustrationSource(panels),
+          illustrationVariant: illustrationVariantDirective(pageIndex),
           basePrompt
-        ].join("\n"));
+        }));
         const trimmed = (content || "").trim();
         if (!trimmed) throw new Error(`${textModelLabel()} 未返回纯图生图提示词。`);
         return trimmed;
       }
-      const content = await callTextModel([
-        "请依据用户提供的分镜脚本及以下输入参数，为每一张图片生成对应的图片生成提示词：",
-        "",
-        `图片总数量：${pageCount}`,
-        `单张图片所含分镜格数：${panelCount}`,
-        `生图模式：${state.outputMode === "comic" ? "剧情图" : "纯图"}`,
-        `画面比例：${state.aspectRatio}`,
-        `生图质量要求：${state.imageQuality || API_CONFIG.imageQuality}`,
-        `生图模型：${imageModelLabel()}`,
-        `参考图请求字段：${imageModelConfig().provider === "grsai" ? "image_urls" : "image"}`,
-        "",
-        "每条提示词须完整描述该图片内所有分镜格的画面，包含：整体构图布局、各格中的人物动作与表情、对应的台词（可融入画面描述中）。",
-        "图片版面不能太方方正正，不能是平均网格或等分切割；必须具有动态漫画版式感。",
-        "请在提示词中明确要求：分镜格大小有主次变化，可使用斜切分格、梯形或不规则边框、跨格人物、大开场格、局部特写小格、气泡跨格、前景遮挡和动势线；整体阅读顺序清晰但构图有节奏感。",
-        "同时，必须在提示词中显式指定所使用的人物参考图和场景参考图，引用格式统一为：“参考图1：xxx，参考图2：xxx，参考图3：xxx”（可根据实际数量增减）。",
-        "仅输出生成的提示词，不附加任何解释说明。",
-        `最终提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
-        "",
-        `当前生成第 ${pageIndex}/${pageCount} 张图片，只能表现分镜 ${startIndex + 1}-${startIndex + panelCount}，不要加入其他分镜或后续剧情。`,
-        "",
+      const content = await callTextModel(renderPromptTemplate("comicImagePrompt", {
+        pageIndex,
+        pageCount,
+        panelCount,
+        panelRange: `${startIndex + 1}-${startIndex + panelCount}`,
+        aspectRatio: state.aspectRatio,
+        imageQuality: state.imageQuality || API_CONFIG.imageQuality,
+        imageModelLabel: imageModelLabel(),
+        referenceField: imageModelConfig().provider === "grsai" ? "image_urls" : "image",
+        projectBible: projectBibleText(),
         referenceBinding,
-        "",
-        "【本张图分镜】",
-        formatStoryboardPanels(panels, startIndex),
-        "",
-        "【基础提示词资料】",
+        consistencyBlock: buildConsistencyBlock(selectedReferences),
+        continuityBlock: buildContinuityBlock(pageIndex),
+        storyboardPanels: formatStoryboardPanels(panels, startIndex),
         basePrompt
-      ].join("\n"));
+      }));
       const trimmed = (content || "").trim();
       if (!trimmed) throw new Error(`${textModelLabel()} 未返回生图提示词。`);
       return trimmed;
+    }
+
+    function promptPageContext(index, pageCount = Math.max(1, Math.min(12, Number(state.generateCount) || 1))) {
+      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : state.storyboard.length;
+      const start = state.outputMode === "comic" ? index * panelsPerImage : 0;
+      const panels = state.outputMode === "comic"
+        ? state.storyboard.slice(start, start + panelsPerImage)
+        : state.storyboard;
+      return { count: pageCount, panelsPerImage, start, panels };
+    }
+
+    async function createPromptForIndex(index, count, createdAt) {
+      const { start, panels } = promptPageContext(index, count);
+      if (!panels.length) return null;
+      const selectedReferences = selectReferencesForPanels(panels);
+      const prompt = buildPromptPreview(panels, {
+        startIndex: start,
+        pageIndex: index + 1,
+        pageCount: count,
+        selectedReferences
+      });
+      let itemPrompt = [
+        prompt,
+        "",
+        `本次生成第 ${index + 1} 张。`,
+        `本次实际传给 ${imageModelLabel()} 的参考图数组：${selectedReferences.map((ref, refIndex) => `${referenceSlotName(refIndex)}=${ref.roleName || ref.name}`).join("；") || "无"}`,
+        "语言要求：最终 prompt 固定使用中文，除 image[n] 等必要标识外不要使用英文描述。",
+        state.outputMode === "comic"
+          ? `输出为剧情图：本张只画分镜 ${start + 1}-${start + panels.length}，不要画其他分镜。必须是一张包含 ${panels.length} 个分镜的动态漫画页，每个分镜都有角色对白气泡，不要旁白框。`
+          : `输出为纯图：单张完整插画，不切分镜，不做漫画排版；人物数量跟随当前画面/分镜涉及角色，可多人同框；本张变化方向：${illustrationVariantDirective(index + 1)}；禁止出现未绑定参考图的新主角、对白、台词、文字、旁白、对话气泡和漫画格。`
+      ].join("\n");
+      if (shouldUseRealApi()) {
+        busyText = `正在调用 ${textModelLabel()} 生成第 ${index + 1}/${count} 张专属生图提示词...`;
+        render();
+        itemPrompt = await generateImagePromptWithDeepSeek({
+          basePrompt: prompt,
+          panels,
+          selectedReferences,
+          startIndex: start,
+          pageIndex: index + 1,
+          pageCount: count
+        });
+        addRecordLog(`${textModelLabel()} 已生成第 ${index + 1} 张生图提示词`);
+      }
+      return {
+        id: uid("prompt"),
+        title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1} 提示词`,
+        mode: state.outputMode,
+        prompt: itemPrompt,
+        referenceIds: selectedReferences.map(ref => ref.id),
+        startIndex: start,
+        panelCount: panels.length,
+        status: "idle",
+        errorMessage: "",
+        continuitySummary: "",
+        createdAt,
+      };
     }
 
     async function generatePrompts() {
@@ -2091,74 +2410,54 @@
       setBusy("正在生成每张图的生图提示词...");
       state.lastApiError = "";
       const count = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
-      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : state.storyboard.length;
       const createdAt = new Date().toLocaleString();
       const prompts = [];
+      state.imagePrompts = [];
+      state.results = [];
       for (let index = 0; index < count; index += 1) {
-        const start = state.outputMode === "comic" ? index * panelsPerImage : 0;
-        const panelsForThisImage = state.outputMode === "comic"
-          ? state.storyboard.slice(start, start + panelsPerImage)
-          : state.storyboard;
-        if (!panelsForThisImage.length) {
+        const { panels } = promptPageContext(index, count);
+        if (!panels.length) {
           addRecordLog(`第 ${index + 1} 张没有可用分镜，已停止生成`);
           break;
         }
-        const selectedReferences = selectReferencesForPanels(panelsForThisImage);
-        const prompt = buildPromptPreview(panelsForThisImage, {
-          startIndex: start,
-          pageIndex: index + 1,
-          pageCount: count,
-          selectedReferences
-        });
-        let itemPrompt = [
-          prompt,
-          "",
-          `本次生成第 ${index + 1} 张。`,
-          `本次实际传给 ${imageModelLabel()} 的参考图数组：${selectedReferences.map((ref, refIndex) => `${referenceSlotName(refIndex)}=${ref.roleName || ref.name}`).join("；") || "无"}`,
-          "语言要求：最终 prompt 固定使用中文，除 image[n] 等必要标识外不要使用英文描述。",
-          state.outputMode === "comic"
-            ? `输出为剧情图：本张只画分镜 ${start + 1}-${start + panelsForThisImage.length}，不要画其他分镜。必须是一张包含 ${panelsForThisImage.length} 个分镜的三段式漫画页，每个分镜都有主角对白气泡，不要旁白框。`
-            : `输出为纯图：单张完整插画，不切分镜，不做漫画排版；画面只允许出现 1 个主要人物，只使用 1 张角色参考图和 1 张场景参考图；本张变化方向：${illustrationVariantDirective(index + 1)}；禁止出现第二个人物、群像、路人、背景人物、对白、台词、文字、旁白、对话气泡和漫画格。`
-        ].join("\n");
-        if (shouldUseRealApi()) {
-          try {
-            busyText = `正在调用 ${textModelLabel()} 生成第 ${index + 1}/${count} 张专属生图提示词...`;
-            render();
-            itemPrompt = await generateImagePromptWithDeepSeek({
-              basePrompt: prompt,
-              panels: panelsForThisImage,
-              selectedReferences,
-              startIndex: start,
-              pageIndex: index + 1,
-              pageCount: count
-            });
-            addRecordLog(`${textModelLabel()} 已生成第 ${index + 1} 张生图提示词`);
-          } catch (error) {
-            addRecordLog(`${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`);
-            state.lastApiError = `${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`;
-            if (!API_CONFIG.fallbackToMock) {
-              alert(state.lastApiError);
-              clearBusy();
-              return;
-            }
+        try {
+          const item = await createPromptForIndex(index, count, createdAt);
+          if (item) prompts.push(item);
+        } catch (error) {
+          addRecordLog(`${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`);
+          state.lastApiError = `${textModelLabel()} 第 ${index + 1} 张生图提示词生成失败：${error.message}`;
+          if (!API_CONFIG.fallbackToMock) {
+            alert(state.lastApiError);
+            clearBusy();
+            return;
           }
         }
-        prompts.push({
-          id: uid("prompt"),
-          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1} 提示词`,
-          mode: state.outputMode,
-          prompt: itemPrompt,
-          referenceIds: selectedReferences.map(ref => ref.id),
-          startIndex: start,
-          panelCount: panelsForThisImage.length,
-          createdAt,
-        });
       }
       state.imagePrompts = prompts;
       state.results = [];
       addRecordLog(`已生成 ${prompts.length} 条生图提示词，等待用户审核生成`);
       currentStep = "prompts";
       saveDraft(false);
+      clearBusy();
+    }
+
+    async function regeneratePrompt(index) {
+      if (!state.storyboardApproved) return;
+      setBusy(`正在重新生成第 ${index + 1} 张提示词...`);
+      state.lastApiError = "";
+      try {
+        const count = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+        const item = await createPromptForIndex(index, count, new Date().toLocaleString());
+        if (!item) throw new Error("当前页没有可用分镜。");
+        state.imagePrompts[index] = item;
+        state.results = (state.results || []).filter(result => result.sourcePromptId !== item.id && result.pageIndex !== index + 1);
+        addRecordLog(`已重新生成第 ${index + 1} 张提示词`);
+        saveDraft(false);
+      } catch (error) {
+        state.lastApiError = `第 ${index + 1} 张提示词重新生成失败：${error.message}`;
+        addRecordLog(state.lastApiError);
+        alert(state.lastApiError);
+      }
       clearBusy();
     }
 
@@ -2191,19 +2490,12 @@
           try {
             busyText = `正在优化第 ${index + 1}/${state.imagePrompts.length} 条提示词...`;
             render();
-            item.prompt = await callTextModel([
-              `请根据用户优化要求，优化下面这份 ${imageModelLabel()} 生图提示词。`,
-              "只输出优化后的最终提示词正文，不要 Markdown，不要解释。",
-              `优化后的提示词必须固定为中文。除 image[0] / image_urls[0]、${imageModelLabel()}、API、文件名这类必要标识外，不要输出英文句子或英文描述。`,
-              "必须原样保留原提示词中的【参考图绑定，必须严格遵守】段落，尤其是参考图数组下标与身份说明。",
-              "必须保留人物一致性锁定、场景一致性锁定、分镜数量、分镜顺序和对白内容。",
-              "不要新增额外分镜，不要新增未上传参考图中的人物。",
-              "",
-              `用户优化要求：${requirement}`,
-              "",
-              "【原提示词】",
-              item.prompt
-            ].join("\n"));
+            item.prompt = await callTextModel(renderPromptTemplate("optimizeImagePrompt", {
+              imageModelLabel: imageModelLabel(),
+              projectBible: projectBibleText(),
+              requirement,
+              originalPrompt: item.prompt
+            }));
           } catch (error) {
             addRecordLog(`第 ${index + 1} 条提示词优化失败：${error.message}`);
             state.lastApiError = `第 ${index + 1} 条提示词优化失败：${error.message}`;
@@ -2222,50 +2514,147 @@
       clearBusy();
     }
 
+    async function continuityReferenceImagesForPage(index) {
+      if (state.outputMode !== "comic" || index <= 0) return [];
+      const previousResult = previousResultForPage(index + 1);
+      if (!previousResult?.url) return [];
+      try {
+        const config = imageModelConfig();
+        const maxBytes = config.provider === "grsai" ? 520 * 1024 : 760 * 1024;
+        const maxSide = config.provider === "grsai" ? 900 : 1100;
+        return [await compressImageDataUrl(previousResult.url, { maxSide, maxBytes, quality: 0.74 })];
+      } catch (error) {
+        addRecordLog(`上一页图片连续性参考压缩失败，已降级为文本连续性：${error.message}`);
+        return [];
+      }
+    }
+
+    function resultIndexByPromptId(promptId) {
+      return (state.results || []).findIndex(result => result.sourcePromptId === promptId);
+    }
+
+    function upsertResult(result) {
+      const index = resultIndexByPromptId(result.sourcePromptId);
+      if (index >= 0) state.results[index] = result;
+      else state.results.push(result);
+    }
+
+    async function buildContinuitySummaryForPrompt(item, index, url) {
+      if (state.outputMode !== "comic") return "";
+      const { panels } = promptPageContext(index, state.imagePrompts.length);
+      const fallback = [
+        `第 ${index + 1} 页剧情已生成。`,
+        `分镜范围：${item.startIndex + 1}-${item.startIndex + item.panelCount}。`,
+        "下一页需要延续本页的角色状态、服装、关键道具、场景时间、光线和背景结构。"
+      ].join(" ");
+      if (!shouldUseRealApi()) return fallback;
+      try {
+        const summary = await callTextModel(renderPromptTemplate("continuitySummary", {
+          storyboardPanels: formatStoryboardPanels(panels, item.startIndex || 0),
+          prompt: item.prompt,
+          imageUrl: url || ""
+        }));
+        return (summary || "").trim() || fallback;
+      } catch (error) {
+        addRecordLog(`第 ${index + 1} 页连续性摘要生成失败，使用本地摘要：${error.message}`);
+        return fallback;
+      }
+    }
+
+    async function generateSingleImage(index, options = {}) {
+      const item = state.imagePrompts[index];
+      if (!item) return null;
+      const standalone = !options.batch;
+      if (standalone) setBusy(`正在生成第 ${index + 1} 张图片...`);
+      state.lastApiError = "";
+      item.status = "generating";
+      item.errorMessage = "";
+      saveDraft(false);
+      render();
+      const createdAt = new Date().toLocaleString();
+      try {
+        const selectedReferences = (item.referenceIds || [])
+          .map(id => state.references.find(ref => ref.id === id))
+          .filter(Boolean);
+        const baseReferenceImages = await getReferenceImagesForApi(selectedReferences);
+        const continuityImages = await continuityReferenceImagesForPage(index);
+        const referenceImages = [...baseReferenceImages, ...continuityImages];
+        const continuityBlock = buildContinuityBlock(index + 1);
+        const runtimePrompt = [item.prompt, "", continuityBlock].join("\n");
+        busyText = `正在调用 ${imageModelLabel()} 生成第 ${index + 1}/${state.imagePrompts.length} 张...`;
+        render();
+        addRecordLog(`第 ${index + 1} 张使用 ${selectedImageInterfaceName(referenceImages.length)}，传入参考图 ${referenceImages.length} 张`);
+        let url = shouldUseRealApi()
+          ? await callImageModel(runtimePrompt, referenceImages)
+          : imagePlaceholder(state.outputMode === "comic" ? `剧情图 ${index + 1}` : `纯图 ${index + 1}`, index);
+        if (!url) url = imagePlaceholder(state.outputMode === "comic" ? `剧情图 ${index + 1}` : `纯图 ${index + 1}`, index);
+        item.status = "success";
+        item.errorMessage = "";
+        item.continuitySummary = await buildContinuitySummaryForPrompt(item, index, url);
+        const result = {
+          id: uid("img"),
+          sourcePromptId: item.id,
+          pageIndex: index + 1,
+          status: "success",
+          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1}`,
+          mode: state.outputMode,
+          url,
+          prompt: runtimePrompt,
+          continuitySummary: item.continuitySummary,
+          createdAt,
+          best: false
+        };
+        upsertResult(result);
+        state.records = [result, ...(state.records || []).filter(record => record.sourcePromptId !== result.sourcePromptId)].slice(0, 60);
+        addRecordLog(`第 ${index + 1} 张生成成功`);
+        saveDraft(false);
+        if (standalone) {
+          currentStep = "preview";
+          clearBusy();
+        } else {
+          render();
+        }
+        return result;
+      } catch (error) {
+        item.status = "failed";
+        item.errorMessage = error.message;
+        const failed = {
+          id: uid("img-failed"),
+          sourcePromptId: item.id,
+          pageIndex: index + 1,
+          status: "failed",
+          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1}`,
+          mode: state.outputMode,
+          url: "",
+          prompt: item.prompt,
+          errorMessage: error.message,
+          createdAt,
+          best: false
+        };
+        upsertResult(failed);
+        state.lastApiError = `${imageModelLabel()} 第 ${index + 1} 张调用失败：${error.message}`;
+        addRecordLog(state.lastApiError);
+        saveDraft(false);
+        render();
+        if (standalone) {
+          alert(state.lastApiError);
+          clearBusy();
+        }
+        return failed;
+      }
+    }
+
     async function generateImagesFromPrompts() {
       if (!state.imagePrompts.length) return;
       setBusy(`正在调用 ${imageModelLabel()} 生成图片...`);
       state.lastApiError = "";
-      const createdAt = new Date().toLocaleString();
-      const results = [];
-      for (let index = 0; index < state.imagePrompts.length; index += 1) {
-        const item = state.imagePrompts[index];
-        const selectedReferences = (item.referenceIds || [])
-          .map(id => state.references.find(ref => ref.id === id))
-          .filter(Boolean);
-        const referenceImages = await getReferenceImagesForApi(selectedReferences);
-        let url = "";
-        if (shouldUseRealApi()) {
-          try {
-            busyText = `正在调用 ${imageModelLabel()} 生成第 ${index + 1}/${state.imagePrompts.length} 张...`;
-            render();
-            addRecordLog(`第 ${index + 1} 张使用 ${selectedImageInterfaceName(referenceImages.length)}，传入参考图 ${referenceImages.length} 张`);
-            url = await callImageModel(item.prompt, referenceImages);
-          } catch (error) {
-            addRecordLog(`${imageModelLabel()} 第 ${index + 1} 张调用失败：${error.message}`);
-            state.lastApiError = `${imageModelLabel()} 第 ${index + 1} 张调用失败：${error.message}`;
-            if (!API_CONFIG.fallbackToMock) {
-              alert(state.lastApiError);
-              clearBusy();
-              return;
-            }
-          }
-        }
-        if (!url) url = imagePlaceholder(state.outputMode === "comic" ? `剧情图 ${index + 1}` : `纯图 ${index + 1}`, index);
-        results.push({
-          id: uid("img"),
-          title: `${state.outputMode === "comic" ? "剧情图" : "纯图"}-${index + 1}`,
-          mode: state.outputMode,
-          url,
-          prompt: item.prompt,
-          createdAt,
-          best: false
-        });
-      }
-      state.results = results;
-      state.records = [...state.results, ...(state.records || [])].slice(0, 60);
-      addRecordLog(`已生成 ${results.length} 张${state.outputMode === "comic" ? "剧情图" : "纯图"}`);
       currentStep = "preview";
+      for (let index = 0; index < state.imagePrompts.length; index += 1) {
+        await generateSingleImage(index, { batch: true });
+      }
+      const successCount = (state.imagePrompts || []).filter(item => item.status === "success").length;
+      const failedCount = (state.imagePrompts || []).filter(item => item.status === "failed").length;
+      addRecordLog(`批量生成完成：成功 ${successCount} 张，失败 ${failedCount} 张`);
       saveDraft(false);
       clearBusy();
     }
@@ -2296,7 +2685,10 @@
       URL.revokeObjectURL(url);
     }
 
-    restoreReferenceImages()
+    Promise.all([
+      restoreReferenceImages().catch(error => console.warn("参考图恢复失败", error)),
+      loadPromptTemplates()
+    ])
       .catch(error => console.warn("参考图恢复失败", error))
       .finally(() => render());
   </script>
