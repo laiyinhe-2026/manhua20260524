@@ -2,6 +2,15 @@ function keyForProvider(provider) {
   return provider === "grsai" ? process.env.GRSAI_API_KEY : process.env.PPIO_API_KEY;
 }
 
+function grsaiAspectRatio(model = "", ratio, size) {
+  if (String(model).includes("gpt-image")) return size;
+  return ratio;
+}
+
+function isGrsaiBanana(model = "") {
+  return String(model).includes("banana");
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
@@ -18,6 +27,7 @@ export default async function handler(req, res) {
     background,
     output_format,
     aspect_ratio,
+    imageSize,
     textToImageUrl,
     editUrl,
     url
@@ -56,16 +66,11 @@ export default async function handler(req, res) {
     payload = {
       model,
       prompt,
-      n: 1,
-      size,
-      quality,
-      background,
-      output_format,
-      aspect_ratio
+      images: references,
+      aspectRatio: grsaiAspectRatio(model, aspect_ratio, size),
+      replyType: "json"
     };
-    if (references.length) {
-      payload.image_urls = references;
-    }
+    if (isGrsaiBanana(model)) payload.imageSize = imageSize || "1K";
   } else {
     return res.status(400).json({ message: `不支持的生图模型供应商：${provider}` });
   }
