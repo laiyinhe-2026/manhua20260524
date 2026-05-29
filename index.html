@@ -496,6 +496,7 @@
       optimizeStory: [
         "请根据用户提供的剧情概要、作品设定资料、角色设定和场景参考图，优化成一个适合后续拆分为多格漫画的完整剧情。",
         "优化后的剧情需要包含明确的起、承、转、合，角色关系清楚，事件推进连贯，情绪变化明确，画面感强。",
+        "可以适度补足动作、情绪和画面细节，但不要额外新增主线、重要角色、世界观规则或与用户剧情概要无关的大段支线。",
         "必须严格遵守作品设定资料和禁止偏离项，不要擅自改变世界观、人物身份、人物关系、核心剧情大纲和场景时代背景。",
         "当前阶段只输出优化后的完整剧情文本，不要输出分镜、格数拆分、标题、解释、前言或后记。",
         "",
@@ -560,9 +561,11 @@
       illustrationImagePrompt: [
         "请依据用户提供的剧情、画面来源、人物参考图和场景参考图，为当前纯图生成图片生成提示词。",
         "仅输出生成的提示词，不附加任何解释说明。",
-        "生成单张完整插画，不是漫画页，不包含分镜格，不做多格排版。",
-        "纯图可单人、双人或多人同框；如果多人出现，必须写清站位、互动、战斗动作、前后景关系和每个角色对应的参考图。",
+        "当前纯图只对应一个分镜：分镜 {{panelNumber}}。必须只表现【画面来源】里的这一条分镜，不要复用第 1 个分镜，不要混入其他分镜或后续剧情。",
+        "生成单张完整分镜稿 / 电影分镜概念图，不是漫画页，不包含分镜格，不做多格排版。",
+        "人物数量、动作和场景必须跟随当前分镜。可单人、双人或多人同框；如果多人出现，必须写清站位、互动、动作关系、前后景关系和每个角色对应的参考图。",
         "纯图里绝对不要出现对白、台词、文字、旁白、拟声词、对话气泡、漫画框线或任何字幕。",
+        "参考图优先级最高。人物参考图只锁定对应角色的脸、发型、发色、服装、配饰、体型和气质；场景参考图只锁定对应场景的空间结构、固定道具、光线和色调。不要让画风、镜头、构图或文字描述覆盖参考图身份。",
         "最终提示词必须固定为中文。",
         "",
         "【作品设定资料】",
@@ -575,7 +578,7 @@
         "【画面来源】",
         "{{illustrationSource}}",
         "",
-        "【本张纯图变化方向】",
+        "【本张纯图规则】",
         "{{illustrationVariant}}",
         "",
         "【基础提示词资料】",
@@ -645,10 +648,11 @@
         model: "gpt-image-2"
       },
       "grsai-nano-banana-pro": {
-        label: "Grsai nano-banana-pro",
+        label: "Grsai nano-banana-2",
         provider: "grsai",
         url: "https://grsaiapi.com/v1/api/generate",
-        model: "nano-banana-pro"
+        model: "nano-banana-2",
+        imageSize: "1K"
       }
     };
     const API_CONFIG = {
@@ -967,7 +971,7 @@
     }
 
     function render() {
-      $("topMeta").textContent = `当前模式：${state.outputMode === "comic" ? "剧情图" : "纯图"} · 数量：${state.generateCount} · 文字：${textModelLabel()} · 生图：${imageModelLabel()} · 草稿：${new Date(state.updatedAt).toLocaleString()}`;
+      $("topMeta").textContent = `当前模式：${state.outputMode === "comic" ? "剧情图" : "纯图"} · 数量：${effectiveImageCount()} · 文字：${textModelLabel()} · 生图：${imageModelLabel()} · 草稿：${new Date(state.updatedAt).toLocaleString()}`;
       $("sidebar").innerHTML = steps.map(([key, title], index) => `
         <button class="step-btn ${currentStep === key ? "active" : ""}" onclick="setStep('${key}')">
           ${index + 1}. ${title}
@@ -1299,8 +1303,8 @@
               </select>
             </label>
             <label>
-              <span>生成数量</span>
-              <input type="number" min="1" max="12" value="${state.generateCount}" onchange="setValue('generateCount', Number(this.value))">
+              <span>${state.outputMode === "illustration" ? "纯图数量（按分镜自动）" : "生成数量"}</span>
+              <input type="number" min="1" max="${state.outputMode === "illustration" ? "80" : "12"}" value="${state.outputMode === "illustration" ? effectiveImageCount() : state.generateCount}" ${state.outputMode === "illustration" ? "disabled" : ""} onchange="setValue('generateCount', Number(this.value))">
             </label>
             <label>
               <span>每张剧情图分镜数</span>
@@ -1321,6 +1325,7 @@
               </select>
             </label>
           </div>
+          ${state.outputMode === "illustration" ? `<div class="status-line">纯图模式会按分镜自动生成：一条分镜对应一张单幅分镜稿，不复用其他分镜内容。</div>` : ""}
           ${renderModelKeyWarning(true)}
         </div>
         <div class="card">
@@ -1699,15 +1704,22 @@
     function selectedImageInterfaceName(referenceCount = 0) {
       const config = imageModelConfig();
       if (config.provider === "ppio") return referenceCount ? "gpt-image-2-edit" : "gpt-image-2-text-to-image";
-      return `${config.model} /v1/api/generate`;
+      return `${config.model} /v1/api/generate${referenceCount ? "（参考图兼容字段）" : ""}`;
     }
 
     function referenceSlotName(index) {
-      return imageModelConfig().provider === "grsai" ? `image_urls[${index}]` : `image[${index}]`;
+      return imageModelConfig().provider === "grsai" ? `images[${index}]` : `image[${index}]`;
     }
 
     function shouldUseRealApi() {
       return Boolean(API_CONFIG.useRealApi);
+    }
+
+    function effectiveImageCount() {
+      if (state.outputMode === "illustration") {
+        return Math.max(1, Math.min(80, (state.storyboard || []).length || Number(state.generateCount) || 1));
+      }
+      return Math.max(1, Math.min(12, Number(state.generateCount) || 1));
     }
 
     async function callTextModel(userPrompt) {
@@ -1806,10 +1818,7 @@
     }
 
     function selectReferencesForPanels(panels = state.storyboard) {
-      const text = [
-        panelTextForMatching(panels),
-        state.outputMode === "illustration" ? (state.optimizedStory || state.story) : ""
-      ].join("\n");
+      const text = panelTextForMatching(panels);
       const usable = (state.references || []).filter(ref => ref.url && !ref.url.startsWith("blob:"));
       const characters = usable.filter(ref => ref.type === "角色图");
       const scenes = usable.filter(ref => ref.type === "场景图");
@@ -1881,6 +1890,7 @@
           background: API_CONFIG.imageBackground,
           output_format: API_CONFIG.imageOutputFormat,
           aspect_ratio: state.aspectRatio,
+          imageSize: config.imageSize,
           textToImageUrl: config.textToImageUrl,
           editUrl: config.editUrl,
           url: config.url
@@ -2167,6 +2177,7 @@
         "【参考图绑定，必须严格遵守】",
         `以下图片会按顺序作为 ${imageModelLabel()} 请求体参考图数组传入：`,
         ...lines,
+        "参考图是角色/场景身份锁定依据，优先级高于画风、构图变化和文字补充；文字只描述动作与镜头，不得覆盖参考图里的脸、发型、服装、配饰和场景结构。",
         "禁止混淆参考图数组身份；禁止把不同参考图的五官、发型、服装、配饰互相混合；禁止新增未绑定参考图的人物。"
       ].join("\n");
     }
@@ -2216,10 +2227,10 @@
       }).join("\n");
     }
 
-    function formatIllustrationSource(panels = []) {
+    function formatIllustrationSource(panels = [], startIndex = 0) {
       const source = panels.length ? panels : state.storyboard;
       return source.map((item, index) => (
-        `画面来源${index + 1}：${item.scene || ""}；人物状态：${item.action || ""}；镜头参考：${item.camera || "自由构图"}`
+        `画面来源（分镜${startIndex + index + 1}）：${item.scene || ""}；人物状态：${item.action || ""}；镜头参考：${item.camera || "自由构图"}`
       )).join("\n") || (state.optimizedStory || state.story);
     }
 
@@ -2237,10 +2248,15 @@
       return variants[(Math.max(1, Number(index) || 1) - 1) % variants.length];
     }
 
-    function buildPromptPreview(panels = state.storyboard, options = {}) {
-      const startIndex = options.startIndex || 0;
+    function buildPromptPreview(panels = null, options = {}) {
+      let startIndex = options.startIndex ?? 0;
       const pageIndex = options.pageIndex || 1;
-      const pageCount = options.pageCount || Number(state.generateCount) || 1;
+      const pageCount = options.pageCount || effectiveImageCount();
+      if (!Array.isArray(panels)) {
+        const context = promptPageContext(pageIndex - 1, pageCount);
+        panels = context.panels.length ? context.panels : state.storyboard;
+        startIndex = context.start;
+      }
       const selectedReferences = options.selectedReferences || selectReferencesForPanels(panels);
       const comicStyleBlock = state.outputMode === "comic"
         ? [
@@ -2259,26 +2275,25 @@
           ].join("\n")
         : [
             "【纯图风格要求】",
-            "生成单张完整角色插画，不做多格漫画排版，不切分镜。",
-            "纯图可以是单人、双人或多人同框，人物数量跟随当前画面/分镜涉及角色。",
-            "如果多人同框，必须写清每个角色的站位、动作互动、战斗关系、前后景层次和对应参考图。",
+            "生成单张完整分镜稿 / 电影分镜概念图，不做多格漫画排版，不切分镜。",
+            `这是第 ${pageIndex}/${pageCount} 张纯图，只表现分镜 ${startIndex + 1}，不得复用第 1 个分镜或混入其他分镜内容。`,
+            "人物数量、动作和场景必须跟随当前这一条分镜；如果多人同框，必须写清每个角色的站位、互动、前后景层次和对应参考图。",
             "纯图中不能出现对白、台词、文字、旁白、对话气泡或漫画格边框。",
-            `这是第 ${pageIndex}/${pageCount} 张纯图，需要与其他纯图形成不同构图 / 姿态 / 氛围版本。`,
-            `本张纯图变化方向：${illustrationVariantDirective(pageIndex)}`,
+            "参考图优先级最高：构图变化、镜头变化和画风描述不能改变参考图中的角色脸、发型、服装、配饰、体型气质或场景结构。",
             "人物必须严格参考上传的角色图，保持发型、发色、脸型、服装、配饰和气质一致。",
             "场景或背景参考上传的场景图，保持视觉基调一致。",
             "画风要求：精致日漫/国漫插画风，画面完整，构图明确，光影细腻。"
           ].join("\n");
       return [
         `生图模式：${state.outputMode === "comic" ? "剧情图" : "纯图"}`,
-        `生成数量：${state.generateCount}`,
+        `生成数量：${pageCount}`,
         `画面比例：${state.aspectRatio}`,
         `生图质量等级：${state.imageQuality || API_CONFIG.imageQuality}`,
         `文字模型：${textModelLabel()}`,
         `生图模型：${imageModelLabel()}`,
         "",
         "【语言要求】",
-        `最终传给 ${imageModelLabel()} 的 prompt 必须固定为中文。除 image[0] / image_urls[0] 这类必要数组标识、API 模型名、文件名外，不要输出英文句子或英文描述。`,
+        `最终传给 ${imageModelLabel()} 的 prompt 必须固定为中文。除 image[0] / images[0] 这类必要数组标识、API 模型名、文件名外，不要输出英文句子或英文描述。`,
         "",
         comicStyleBlock,
         "",
@@ -2296,10 +2311,9 @@
         "",
         state.outputMode === "comic" ? "【本张图仅使用的分镜】" : "【画面规划】",
         state.outputMode === "comic" ? formatStoryboardPanels(panels, startIndex) : [
-          formatIllustrationSource(panels),
+          formatIllustrationSource(panels, startIndex),
           "",
-          `【本张纯图变化方向】${illustrationVariantDirective(pageIndex)}`,
-          "人物数量跟随本画面涉及角色；可以多人同框，但不得新增未绑定参考图的主角。",
+          `【本张纯图规则】本张只画分镜 ${startIndex + 1}，一张图只对应这一条分镜。人物数量跟随本画面涉及角色；可以多人同框，但不得新增未绑定参考图的主角。`,
           "禁止出现任何对白、台词、文字、旁白、对话气泡、漫画分格或多格排版。"
         ].join("\n")
       ].join("\n");
@@ -2315,12 +2329,13 @@
           aspectRatio: state.aspectRatio,
           imageQuality: state.imageQuality || API_CONFIG.imageQuality,
           imageModelLabel: imageModelLabel(),
-          referenceField: imageModelConfig().provider === "grsai" ? "image_urls" : "image",
+          referenceField: imageModelConfig().provider === "grsai" ? "images" : "image",
           projectBible: projectBibleText(),
           referenceBinding,
           consistencyBlock: buildConsistencyBlock(selectedReferences),
-          illustrationSource: formatIllustrationSource(panels),
-          illustrationVariant: illustrationVariantDirective(pageIndex),
+          illustrationSource: formatIllustrationSource(panels, startIndex),
+          illustrationVariant: `本张只画分镜 ${startIndex + 1}，不得复用第 1 个分镜或混入其他分镜。`,
+          panelNumber: startIndex + 1,
           basePrompt
         }));
         const trimmed = (content || "").trim();
@@ -2335,7 +2350,7 @@
         aspectRatio: state.aspectRatio,
         imageQuality: state.imageQuality || API_CONFIG.imageQuality,
         imageModelLabel: imageModelLabel(),
-        referenceField: imageModelConfig().provider === "grsai" ? "image_urls" : "image",
+        referenceField: imageModelConfig().provider === "grsai" ? "images" : "image",
         projectBible: projectBibleText(),
         referenceBinding,
         consistencyBlock: buildConsistencyBlock(selectedReferences),
@@ -2348,12 +2363,12 @@
       return trimmed;
     }
 
-    function promptPageContext(index, pageCount = Math.max(1, Math.min(12, Number(state.generateCount) || 1))) {
-      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : state.storyboard.length;
-      const start = state.outputMode === "comic" ? index * panelsPerImage : 0;
+    function promptPageContext(index, pageCount = effectiveImageCount()) {
+      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : 1;
+      const start = state.outputMode === "comic" ? index * panelsPerImage : index;
       const panels = state.outputMode === "comic"
         ? state.storyboard.slice(start, start + panelsPerImage)
-        : state.storyboard;
+        : state.storyboard.slice(start, start + 1);
       return { count: pageCount, panelsPerImage, start, panels };
     }
 
@@ -2375,7 +2390,7 @@
         "语言要求：最终 prompt 固定使用中文，除 image[n] 等必要标识外不要使用英文描述。",
         state.outputMode === "comic"
           ? `输出为剧情图：本张只画分镜 ${start + 1}-${start + panels.length}，不要画其他分镜。必须是一张包含 ${panels.length} 个分镜的动态漫画页，每个分镜都有角色对白气泡，不要旁白框。`
-          : `输出为纯图：单张完整插画，不切分镜，不做漫画排版；人物数量跟随当前画面/分镜涉及角色，可多人同框；本张变化方向：${illustrationVariantDirective(index + 1)}；禁止出现未绑定参考图的新主角、对白、台词、文字、旁白、对话气泡和漫画格。`
+          : `输出为纯图：本张只画分镜 ${start + 1} 的单张分镜稿 / 电影分镜概念图，不切分镜，不做漫画排版；人物数量跟随当前分镜涉及角色，可多人同框；禁止出现未绑定参考图的新主角、对白、台词、文字、旁白、对话气泡和漫画格。`
       ].join("\n");
       if (shouldUseRealApi()) {
         busyText = `正在调用 ${textModelLabel()} 生成第 ${index + 1}/${count} 张专属生图提示词...`;
@@ -2409,7 +2424,7 @@
       if (!state.storyboardApproved) return;
       setBusy("正在生成每张图的生图提示词...");
       state.lastApiError = "";
-      const count = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+      const count = effectiveImageCount();
       const createdAt = new Date().toLocaleString();
       const prompts = [];
       state.imagePrompts = [];
@@ -2446,7 +2461,7 @@
       setBusy(`正在重新生成第 ${index + 1} 张提示词...`);
       state.lastApiError = "";
       try {
-        const count = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+        const count = effectiveImageCount();
         const item = await createPromptForIndex(index, count, new Date().toLocaleString());
         if (!item) throw new Error("当前页没有可用分镜。");
         state.imagePrompts[index] = item;
