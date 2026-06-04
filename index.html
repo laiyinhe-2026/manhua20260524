@@ -537,7 +537,7 @@
         "请依据用户提供的分镜脚本及以下输入参数，为当前漫画页生成图片生成提示词。",
         "仅输出生成的提示词，不附加任何解释说明。",
         "当前生成第 {{pageIndex}}/{{pageCount}} 张图片，只能表现分镜 {{panelRange}}，不要加入其他分镜或后续剧情。",
-        "图片必须是一张完整漫画页，每个分镜都有对白气泡，不要旁白框。",
+        "图片必须是一张完整漫画页，且必须正好包含 {{expectedPanelCount}} 个分镜格，不能少格，不能多格，不能用上一页内容、上一页参考图或其他分镜补格。每个分镜都有对白气泡，不要旁白框。",
         "版式必须有动态漫画感，不能太方方正正，不能是平均网格或等分切割。",
         "必须明确要求人物严格对应参考图，场景严格对应参考图，不得混合五官、服装、发色，不得生成未绑定参考图的新主角。",
         "上一页参考图只用于连续性，不改变当前页分镜内容。",
@@ -642,16 +642,16 @@
         model: "gpt-image-2"
       },
       "grsai-gpt-image-2": {
-        label: "Grsai GPT Image 2",
+        label: "Grsai GPT Image 2 VIP",
         provider: "grsai",
         url: "https://grsaiapi.com/v1/api/generate",
-        model: "gpt-image-2"
+        model: "gpt-image-2-vip"
       },
       "grsai-nano-banana-pro": {
-        label: "Grsai nano-banana-2",
+        label: "Grsai nano-banana-pro",
         provider: "grsai",
         url: "https://grsaiapi.com/v1/api/generate",
-        model: "nano-banana-2",
+        model: "nano-banana-pro",
         imageSize: "1K"
       }
     };
@@ -1326,6 +1326,7 @@
             </label>
           </div>
           ${state.outputMode === "illustration" ? `<div class="status-line">纯图模式会按分镜自动生成：一条分镜对应一张单幅分镜稿，不复用其他分镜内容。</div>` : ""}
+          ${comicGenerationWarning() ? `<div class="status-line" style="background:#fff7ed;color:#c2410c">${esc(comicGenerationWarning())}</div>` : ""}
           ${renderModelKeyWarning(true)}
         </div>
         <div class="card">
@@ -1719,7 +1720,19 @@
       if (state.outputMode === "illustration") {
         return Math.max(1, Math.min(80, (state.storyboard || []).length || Number(state.generateCount) || 1));
       }
-      return Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+      const panelsPerImage = Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4));
+      const fullPages = Math.floor((state.storyboard || []).length / panelsPerImage);
+      const requested = Math.max(1, Math.min(12, Number(state.generateCount) || 1));
+      return Math.max(1, Math.min(requested, fullPages || requested));
+    }
+
+    function comicGenerationWarning() {
+      if (state.outputMode !== "comic") return "";
+      const panelsPerImage = Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4));
+      const totalPanels = (state.storyboard || []).length;
+      const remainder = totalPanels % panelsPerImage;
+      if (!totalPanels || !remainder) return "";
+      return `当前分镜共 ${totalPanels} 格，每张剧情图 ${panelsPerImage} 格；最后 ${remainder} 格不足一整页，将不会生成，避免模型用上一页或参考图补格导致重复。`;
     }
 
     async function callTextModel(userPrompt) {
@@ -2262,7 +2275,7 @@
         ? [
             "【剧情图漫画风格要求】",
             "生成一张竖版完整漫画页，不是单张普通插画，也不是写实照片。",
-            `这是第 ${pageIndex}/${pageCount} 张剧情图。本张图只表现下方列出的 ${panels.length} 个分镜，不要把其他分镜或后续剧情画进来。`,
+            `这是第 ${pageIndex}/${pageCount} 张剧情图。本张图必须正好表现下方列出的 ${panels.length} 个分镜，不能少格，不能多格，不要把其他分镜或后续剧情画进来。`,
             "版式必须有动态漫画感，不能太方方正正，不能做成平均网格或等分切割。",
             "分镜格大小要有主次变化：可使用大开场格、斜切分格、梯形/不规则边框、跨格人物、局部特写小格、气泡跨格、前景遮挡和动势线。",
             "整体布局参考动态国漫/日漫页面：上方可用宽幅环境格，中段用倾斜双格推进对白，下方用大特写或局部动作格强化情绪。",
@@ -2356,6 +2369,7 @@
         consistencyBlock: buildConsistencyBlock(selectedReferences),
         continuityBlock: buildContinuityBlock(pageIndex),
         storyboardPanels: formatStoryboardPanels(panels, startIndex),
+        expectedPanelCount: panelCount,
         basePrompt
       }));
       const trimmed = (content || "").trim();
@@ -2375,6 +2389,8 @@
     async function createPromptForIndex(index, count, createdAt) {
       const { start, panels } = promptPageContext(index, count);
       if (!panels.length) return null;
+      const panelsPerImage = state.outputMode === "comic" ? Math.max(3, Math.min(8, Number(state.panelsPerComicImage) || 4)) : 1;
+      if (state.outputMode === "comic" && panels.length !== panelsPerImage) return null;
       const selectedReferences = selectReferencesForPanels(panels);
       const prompt = buildPromptPreview(panels, {
         startIndex: start,
@@ -2429,6 +2445,8 @@
       const prompts = [];
       state.imagePrompts = [];
       state.results = [];
+      const warn = comicGenerationWarning();
+      if (warn) addRecordLog(warn);
       for (let index = 0; index < count; index += 1) {
         const { panels } = promptPageContext(index, count);
         if (!panels.length) {

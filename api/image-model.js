@@ -11,12 +11,6 @@ function isGrsaiBanana(model = "") {
   return String(model).includes("banana");
 }
 
-function normalizeGrsaiModel(model = "") {
-  if (model === "gpt-image-2-vip") return "gpt-image-2";
-  if (model === "nano-banana-pro") return "nano-banana-2";
-  return model;
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
@@ -69,15 +63,14 @@ export default async function handler(req, res) {
     }
   } else if (provider === "grsai") {
     endpoint = url || "https://grsaiapi.com/v1/api/generate";
-    const normalizedModel = normalizeGrsaiModel(model);
     payload = {
-      model: normalizedModel,
+      model,
       prompt,
       images: references,
-      aspectRatio: grsaiAspectRatio(normalizedModel, aspect_ratio, size),
+      aspectRatio: grsaiAspectRatio(model, aspect_ratio, size),
       replyType: "json"
     };
-    if (isGrsaiBanana(normalizedModel)) payload.imageSize = imageSize || "1K";
+    if (isGrsaiBanana(model)) payload.imageSize = imageSize || "1K";
   } else {
     return res.status(400).json({ message: `不支持的生图模型供应商：${provider}` });
   }
