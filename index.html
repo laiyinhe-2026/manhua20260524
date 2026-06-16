@@ -463,10 +463,14 @@
     </div>
     <div class="actions">
       <button class="btn" onclick="saveDraft(true)">保存草稿</button>
+      <button class="btn" onclick="saveProjectRecord()">保存工程</button>
+      <button class="btn" onclick="toggleProjects()">工程记录</button>
       <button class="btn" onclick="toggleHistory()">历史记录</button>
       <button class="btn" onclick="toggleTemplates()">提示词模板</button>
+      <button class="btn" onclick="$('projectImportFile').click()">导入工程</button>
       <button class="btn" onclick="downloadProject()">导出项目 JSON</button>
       <button class="btn" onclick="resetDemo()">恢复演示</button>
+      <input id="projectImportFile" type="file" accept="application/json,.json" style="display:none" onchange="importProjectFile(this.files)">
     </div>
   </header>
 
@@ -475,11 +479,13 @@
     <main class="main" id="main"></main>
   </div>
   <div id="historyModal"></div>
+  <div id="projectModal"></div>
   <div id="templateModal"></div>
   <div id="imageModal"></div>
 
   <script>
     const STORAGE_KEY = "ai-comic-simple-flow-html";
+    const PROJECTS_STORAGE_KEY = "ai-comic-project-records-html";
     const IMAGE_DB_NAME = "ai-comic-reference-images";
     const IMAGE_DB_STORE = "referenceImages";
     const BUILTIN_PPIO_API_KEY = "";
@@ -517,8 +523,8 @@
       generateStoryboard: [
         "请根据漫画剧情描述，分成分镜图（一个漫画格为一个分镜）。",
         "只输出 JSON 数组，不要 Markdown。数组元素字段固定为：scene, action, camera, text, characterNames, sceneRefName。",
-        "每个分镜都必须有主角台词，text 字段只能写角色说出口的对白，不要写旁白，不要写空字符串。",
-        "每句台词要短、具体、适合放进漫画对白气泡里。",
+        "需要对白的分镜才填写 text；无对白分镜必须让 text 为空字符串。text 字段只能写角色说出口的对白，不要写旁白。",
+        "每句台词要短、具体、适合放进漫画对白气泡里；不要为了填满分镜而强行添加台词。",
         "必须严格遵守作品设定资料、参考图绑定和禁止偏离项。",
         "分镜数量必须严格等于漫画总格数 N：{{totalComicPanels}}。",
         "characterNames 必须是本分镜出场角色名数组，名称必须来自参考图绑定里的角色名/身份或别名。",
@@ -537,7 +543,7 @@
         "请依据用户提供的分镜脚本及以下输入参数，为当前漫画页生成图片生成提示词。",
         "仅输出生成的提示词，不附加任何解释说明。",
         "当前生成第 {{pageIndex}}/{{pageCount}} 张图片，只能表现分镜 {{panelRange}}，不要加入其他分镜或后续剧情。",
-        "图片必须是一张完整漫画页，且必须正好包含 {{expectedPanelCount}} 个分镜格，不能少格，不能多格，不能用上一页内容、上一页参考图或其他分镜补格。每个分镜都有对白气泡，不要旁白框。",
+        "图片必须是一张完整漫画页，且必须正好包含 {{expectedPanelCount}} 个分镜格，不能少格，不能多格，不能用上一页内容、上一页参考图或其他分镜补格。有台词的分镜按指定台词添加对白气泡；无台词分镜禁止添加对白气泡、文字、旁白框或拟声词。",
         "版式必须有动态漫画感，不能太方方正正，不能是平均网格或等分切割。",
         "必须明确要求人物严格对应参考图，场景严格对应参考图，不得混合五官、服装、发色，不得生成未绑定参考图的新主角。",
         "上一页参考图只用于连续性，不改变当前页分镜内容。",
@@ -679,6 +685,7 @@
     let isBusy = false;
     let busyText = "";
     let historyOpen = false;
+    let projectsOpen = false;
     let imagePreview = null;
     let promptTemplates = { ...FALLBACK_PROMPT_TEMPLATES };
     let templatesOpen = false;
@@ -735,6 +742,7 @@
         totalComicPanels: 12,
         panelsPerComicImage: 4,
         aspectRatio: "3:4",
+        imageSize: "1K",
         imageQuality: "medium",
         promptOptimization: "",
         imagePrompts: [],
@@ -771,6 +779,7 @@
     state.results = state.results || [];
     state.panelsPerComicImage = state.panelsPerComicImage || 4;
     state.totalComicPanels = state.totalComicPanels || Math.max(4, Number(state.generateCount || 3) * Number(state.panelsPerComicImage || 4));
+    state.imageSize = state.imageSize || "1K";
     state.imageQuality = state.imageQuality || API_CONFIG.imageQuality || "medium";
     state.textModel = state.textModel || "ppio-deepseek-v4-flash";
     state.imageModel = state.imageModel || "ppio-gpt-image-2";
@@ -807,6 +816,63 @@
           url: record.url && record.url.startsWith("data:") ? "" : record.url
         }))
       };
+    }
+
+    function projectDisplayName(projectState = state) {
+      const outline = projectState.projectBible?.outline || "";
+      const story = projectState.story || projectState.optimizedStory || "";
+      const source = lines(outline)[0] || lines(story)[0] || "未命名工程";
+      return source.slice(0, 28);
+    }
+
+    function normalizeProjectState(input = {}) {
+      const next = {
+        ...demoState(),
+        ...input,
+        projectBible: {
+          ...demoState().projectBible,
+          ...(input.projectBible || {})
+        }
+      };
+      next.references = (next.references || []).map((ref, index) => normalizeReference(ref, index));
+      next.records = next.records || [];
+      next.imagePrompts = (next.imagePrompts || []).map(item => ({
+        status: "idle",
+        errorMessage: "",
+        continuitySummary: "",
+        ...item
+      }));
+      next.results = next.results || [];
+      next.logs = next.logs || [];
+      next.imageSize = next.imageSize || "1K";
+      next.imageQuality = next.imageQuality || API_CONFIG.imageQuality || "medium";
+      next.panelsPerComicImage = next.panelsPerComicImage || 4;
+      next.totalComicPanels = next.totalComicPanels || Math.max(4, Number(next.generateCount || 3) * Number(next.panelsPerComicImage || 4));
+      next.updatedAt = new Date().toISOString();
+      return next;
+    }
+
+    function readProjectRecords() {
+      try {
+        const records = JSON.parse(localStorage.getItem(PROJECTS_STORAGE_KEY) || "[]");
+        return Array.isArray(records) ? records : [];
+      } catch (error) {
+        console.warn("读取工程记录失败", error);
+        return [];
+      }
+    }
+
+    function writeProjectRecords(records) {
+      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(records.slice(0, 30)));
+    }
+
+    async function persistReferenceImagesFromState(projectState = state) {
+      for (const ref of projectState.references || []) {
+        if (ref.url && ref.url.startsWith("data:")) {
+          await putReferenceImage(ref.id, ref.url);
+          ref.imagePersisted = true;
+        }
+      }
     }
 
     function openImageDb() {
@@ -910,6 +976,7 @@
     }
 
     function resetDemo() {
+      if (!confirm("确定恢复演示项目？当前草稿、参考图缓存和未导出的内容会被清空。")) return;
       state = demoState();
       currentStep = "input";
       clearReferenceImageDb().catch(error => console.warn("清空参考图缓存失败", error));
@@ -923,7 +990,7 @@
 
     function setValue(key, value) {
       state[key] = value;
-      if (["outputMode", "generateCount", "panelsPerComicImage", "totalComicPanels", "aspectRatio", "imageQuality", "textModel", "imageModel"].includes(key)) {
+      if (["outputMode", "generateCount", "panelsPerComicImage", "totalComicPanels", "aspectRatio", "imageSize", "imageQuality", "textModel", "imageModel"].includes(key)) {
         state.imagePrompts = [];
         state.results = [];
       }
@@ -938,6 +1005,18 @@
     function closeHistory(event) {
       if (event.target.classList.contains("modal-backdrop")) {
         historyOpen = false;
+        render();
+      }
+    }
+
+    function toggleProjects() {
+      projectsOpen = !projectsOpen;
+      render();
+    }
+
+    function closeProjects(event) {
+      if (event.target.classList.contains("modal-backdrop")) {
+        projectsOpen = false;
         render();
       }
     }
@@ -971,7 +1050,7 @@
     }
 
     function render() {
-      $("topMeta").textContent = `当前模式：${state.outputMode === "comic" ? "剧情图" : "纯图"} · 数量：${effectiveImageCount()} · 文字：${textModelLabel()} · 生图：${imageModelLabel()} · 草稿：${new Date(state.updatedAt).toLocaleString()}`;
+      $("topMeta").textContent = `当前模式：${state.outputMode === "comic" ? "剧情图" : "纯图"} · 数量：${effectiveImageCount()} · 分辨率：${selectedImageSize()} · 文字：${textModelLabel()} · 生图：${imageModelLabel()} · 草稿：${new Date(state.updatedAt).toLocaleString()}`;
       $("sidebar").innerHTML = steps.map(([key, title], index) => `
         <button class="step-btn ${currentStep === key ? "active" : ""}" onclick="setStep('${key}')">
           ${index + 1}. ${title}
@@ -980,6 +1059,7 @@
       `).join("");
       $("main").innerHTML = renderMain();
       $("historyModal").innerHTML = historyOpen ? renderRecordsModal() : "";
+      $("projectModal").innerHTML = projectsOpen ? renderProjectsModal() : "";
       $("templateModal").innerHTML = templatesOpen ? renderTemplatesModal() : "";
       $("imageModal").innerHTML = imagePreview ? renderImageModal() : "";
     }
@@ -1317,6 +1397,12 @@
               </select>
             </label>
             <label>
+              <span>输出分辨率</span>
+              <select onchange="setValue('imageSize', this.value)">
+                ${["1K", "2K", "4K"].map(size => `<option value="${size}" ${selectedImageSize() === size ? "selected" : ""}>${size}</option>`).join("")}
+              </select>
+            </label>
+            <label>
               <span>生图质量等级</span>
               <select onchange="setValue('imageQuality', this.value)">
                 <option value="low" ${state.imageQuality === "low" ? "selected" : ""}>low 低</option>
@@ -1476,6 +1562,40 @@
                   <a class="btn" href="${record.url}" download="${record.title}.svg">下载</a>
                 </div>
               `).join("") || `<p class="muted">暂无生成记录。</p>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProjectsModal() {
+      const projects = readProjectRecords();
+      return `
+        <div class="modal-backdrop" onclick="closeProjects(event)">
+          <div class="modal-panel" onclick="event.stopPropagation()">
+            <div class="toolbar" style="margin-bottom:10px">
+              <div>
+                <h3>工程记录</h3>
+                <p class="muted" style="margin:4px 0 0">保存不同作品的剧情、世界观、参考图绑定、分镜和生成参数，方便切换。</p>
+              </div>
+              <div class="actions">
+                <button class="btn primary" onclick="saveProjectRecord()">保存当前工程</button>
+                <button class="btn" onclick="$('projectImportFile').click()">导入 JSON</button>
+                <button class="btn" onclick="toggleProjects()">关闭</button>
+              </div>
+            </div>
+            <div class="record-list">
+              ${projects.map(project => `
+                <div class="record-item">
+                  <b>${esc(project.name)}</b>
+                  <p class="muted">${new Date(project.updatedAt).toLocaleString()} · ${project.summary || "无摘要"}</p>
+                  <div class="actions">
+                    <button class="btn primary" onclick="loadProjectRecord('${project.id}')">切换</button>
+                    <button class="btn" onclick="exportProjectRecord('${project.id}')">导出</button>
+                    <button class="btn danger" onclick="deleteProjectRecord('${project.id}')">删除</button>
+                  </div>
+                </div>
+              `).join("") || `<p class="muted">暂无工程记录。点击“保存当前工程”即可把当前作品保存成可切换记录。</p>`}
             </div>
           </div>
         </div>
@@ -1702,6 +1822,10 @@
       return imageModelConfig().label;
     }
 
+    function selectedImageSize() {
+      return ["1K", "2K", "4K"].includes(state.imageSize) ? state.imageSize : "1K";
+    }
+
     function selectedImageInterfaceName(referenceCount = 0) {
       const config = imageModelConfig();
       if (config.provider === "ppio") return referenceCount ? "gpt-image-2-edit" : "gpt-image-2-text-to-image";
@@ -1886,7 +2010,8 @@
 
     async function callImageModel(prompt, referenceImages = []) {
       const config = imageModelConfig();
-      const size = sizeFromAspectRatio(state.aspectRatio);
+      const imageSize = selectedImageSize();
+      const size = sizeFromAspectRatio(state.aspectRatio, imageSize);
       const response = await fetch("/api/image-model", {
         method: "POST",
         headers: {
@@ -1903,7 +2028,7 @@
           background: API_CONFIG.imageBackground,
           output_format: API_CONFIG.imageOutputFormat,
           aspect_ratio: state.aspectRatio,
-          imageSize: config.imageSize,
+          imageSize,
           textToImageUrl: config.textToImageUrl,
           editUrl: config.editUrl,
           url: config.url
@@ -1918,15 +2043,31 @@
       throw new Error("生图接口返回中没有可识别的图片 URL。");
     }
 
-    function sizeFromAspectRatio(ratio) {
-      const map = {
-        "1:1": "1024x1024",
-        "3:4": "1024x1536",
-        "4:3": "1536x1024",
-        "9:16": "2160x3840",
-        "16:9": "3840x2160"
+    function sizeFromAspectRatio(ratio, imageSize = "1K") {
+      const maps = {
+        "1K": {
+          "1:1": "1024x1024",
+          "3:4": "1024x1536",
+          "4:3": "1536x1024",
+          "9:16": "1024x1792",
+          "16:9": "1792x1024"
+        },
+        "2K": {
+          "1:1": "2048x2048",
+          "3:4": "1536x2048",
+          "4:3": "2048x1536",
+          "9:16": "1440x2560",
+          "16:9": "2560x1440"
+        },
+        "4K": {
+          "1:1": "4096x4096",
+          "3:4": "3072x4096",
+          "4:3": "4096x3072",
+          "9:16": "2160x3840",
+          "16:9": "3840x2160"
+        }
       };
-      return map[ratio] || "1024x1536";
+      return (maps[imageSize] || maps["1K"])[ratio] || (maps[imageSize] || maps["1K"])["3:4"];
     }
 
     function setBusy(text) {
@@ -2235,8 +2376,10 @@
 
     function formatStoryboardPanels(panels, startIndex = 0) {
       return panels.map((item, index) => {
-        const dialogue = item.text && item.text.trim() ? item.text.trim() : "请根据剧情补充一句主角台词";
-        return `分镜${startIndex + index + 1}：${item.scene}；动作：${item.action}；镜头：${item.camera}；必须出现的主角台词：${dialogue}`;
+        const dialogue = item.text && item.text.trim()
+          ? `必须出现的主角台词：${item.text.trim()}`
+          : "本分镜无对白：禁止添加对白气泡、文字、旁白框或拟声词";
+        return `分镜${startIndex + index + 1}：${item.scene}；动作：${item.action}；镜头：${item.camera}；${dialogue}`;
       }).join("\n");
     }
 
@@ -2280,7 +2423,7 @@
             "分镜格大小要有主次变化：可使用大开场格、斜切分格、梯形/不规则边框、跨格人物、局部特写小格、气泡跨格、前景遮挡和动势线。",
             "整体布局参考动态国漫/日漫页面：上方可用宽幅环境格，中段用倾斜双格推进对白，下方用大特写或局部动作格强化情绪。",
             "分镜之间要有清楚的剧情推进，阅读顺序必须清晰，但边框和构图要有节奏感与视觉冲击。",
-            "每一个分镜都必须有主角对白气泡，不要旁白框，台词内容以本提示词列出的主角台词为准。",
+            "只有标注了主角台词的分镜才添加对白气泡；标注无对白的分镜禁止出现对白气泡、文字、旁白框或拟声词。台词内容必须以本提示词列出的主角台词为准。",
             "画风要求：精致日漫/国漫校园漫画风，干净线稿，柔和上色，细腻表情，明亮但有层次的场景光影。",
             "文字区域留白明确，气泡不要遮挡人物脸部。",
             "人物必须严格参考上传的角色图，保持发型、发色、脸型、服装、配饰和气质一致。",
@@ -2301,6 +2444,7 @@
         `生图模式：${state.outputMode === "comic" ? "剧情图" : "纯图"}`,
         `生成数量：${pageCount}`,
         `画面比例：${state.aspectRatio}`,
+        `输出分辨率：${selectedImageSize()}（接口尺寸：${sizeFromAspectRatio(state.aspectRatio, selectedImageSize())}）`,
         `生图质量等级：${state.imageQuality || API_CONFIG.imageQuality}`,
         `文字模型：${textModelLabel()}`,
         `生图模型：${imageModelLabel()}`,
@@ -2702,6 +2846,79 @@
       state.records = [];
       addRecordLog("已清空历史生成记录");
       saveDraft(false);
+    }
+
+    async function saveProjectRecord() {
+      try {
+        await persistReferenceImagesFromState(state);
+        state.projectId = state.projectId || uid("project");
+        const now = new Date().toISOString();
+        const snapshot = getDraftState();
+        const record = {
+          id: state.projectId,
+          name: projectDisplayName(state),
+          summary: `${state.outputMode === "comic" ? "剧情图" : "纯图"} · 分镜 ${state.storyboard?.length || 0} · 参考图 ${state.references?.length || 0}`,
+          updatedAt: now,
+          state: snapshot
+        };
+        const records = readProjectRecords().filter(item => item.id !== record.id);
+        writeProjectRecords([record, ...records]);
+        state.updatedAt = now;
+        addRecordLog(`已保存工程：${record.name}`);
+        saveDraft(false);
+      } catch (error) {
+        alert(`保存工程失败：${error.message}`);
+      }
+    }
+
+    async function loadProjectRecord(id) {
+      const record = readProjectRecords().find(item => item.id === id);
+      if (!record) return;
+      saveDraft(false);
+      state = normalizeProjectState({ ...(record.state || {}), projectId: record.id });
+      await restoreReferenceImages().catch(error => console.warn("切换工程恢复参考图失败", error));
+      currentStep = "input";
+      projectsOpen = false;
+      addRecordLog(`已切换工程：${record.name}`);
+      saveDraft(false);
+    }
+
+    function deleteProjectRecord(id) {
+      const record = readProjectRecords().find(item => item.id === id);
+      if (!record || !confirm(`确定删除工程记录“${record.name}”？不会删除当前已打开草稿。`)) return;
+      writeProjectRecords(readProjectRecords().filter(item => item.id !== id));
+      render();
+    }
+
+    function exportProjectRecord(id) {
+      const record = readProjectRecords().find(item => item.id === id);
+      if (!record) return;
+      downloadBlob(`${record.name || "AI漫画工程"}.json`, JSON.stringify(record.state || {}, null, 2), "application/json");
+    }
+
+    async function importProjectFile(files) {
+      const file = files?.[0];
+      if (!file) return;
+      try {
+        const content = await file.text();
+        const payload = JSON.parse(content);
+        const imported = payload.state || payload.snapshot || payload;
+        const next = normalizeProjectState({
+          ...imported,
+          projectId: imported.projectId || uid("project")
+        });
+        await persistReferenceImagesFromState(next);
+        state = next;
+        currentStep = "input";
+        projectsOpen = false;
+        addRecordLog(`已导入工程：${projectDisplayName(state)}`);
+        await saveProjectRecord();
+        saveDraft(false);
+      } catch (error) {
+        alert(`导入工程失败：${error.message}`);
+      } finally {
+        if ($("projectImportFile")) $("projectImportFile").value = "";
+      }
     }
 
     function downloadProject() {
